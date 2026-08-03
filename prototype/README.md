@@ -96,3 +96,64 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 
 - [vinext Documentation](https://github.com/cloudflare/vinext)
 - [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+## Tydzień 4 – Reset & Re-prompt
+
+### Aktualne mikrozadanie
+
+Celem zadania jest stworzenie niezależnej reguły sprawdzającej,
+czy kampania ma wystarczającą ilość danych do oceny.
+
+### Dane wejściowe
+
+- `spend` – wydatki kampanii w PLN,
+- `sessions` – liczba sesji kampanii.
+
+### Reguła biznesowa
+
+Dane są wystarczające, gdy:
+
+- `spend >= 150`
+
+LUB
+
+- `sessions >= 150`.
+
+### Możliwe wyniki
+
+- `SUFFICIENT_DATA`
+- `INSUFFICIENT_DATA`
+
+### Przypadki graniczne
+
+- `spend = 150` oraz `sessions < 150` → `SUFFICIENT_DATA`
+- `spend < 150` oraz `sessions = 150` → `SUFFICIENT_DATA`
+- `spend = 149.99` oraz `sessions = 149` → `INSUFFICIENT_DATA`
+
+### Zakres zadania
+
+Agent może utworzyć maksymalnie dwa pliki:
+
+- `campaign-data-sufficiency.ts`
+- `campaign-data-sufficiency.test.ts`
+
+Agent nie może:
+
+- zmieniać komponentów React,
+- zmieniać integracji z Supabase,
+- zmieniać istniejącego interfejsu,
+- przebudowywać całej aplikacji,
+- dodawać innych reguł oceny kampanii.
+
+Walidacja niepoprawnych danych wejściowych pozostaje poza zakresem tego mikrozadania.
+
+### Kryterium ukończenia
+
+Zadanie jest ukończone, gdy testy sprawdzające:
+
+- próg wydatków,
+- próg sesji,
+- operator LUB,
+- wartości dokładnie na granicy,
+- wartości poniżej granicy
+
+przechodzą bez uruchamiania Reacta, Supabase ani zewnętrznego API.
