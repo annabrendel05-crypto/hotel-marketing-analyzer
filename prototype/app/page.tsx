@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 type View = "start" | "overview" | "campaigns" | "campaign" | "funnel" | "channels";
 type Campaign = {
@@ -21,7 +22,7 @@ type Campaign = {
   evidence: string[];
 };
 
-const campaigns: Campaign[] = [
+const fallbackCampaigns: Campaign[] = [
   {
     id: "prospecting",
     name: "Wakacje w Gdyni | Prospecting",
@@ -119,11 +120,90 @@ const nav: { id: View; label: string }[] = [
 export default function Home() {
   const [view, setView] = useState<View>("start");
   const [selectedId, setSelectedId] = useState("prospecting");
+  const [campaigns, setCampaigns] = useState<Campaign[]>(fallbackCampaigns);
+  const [connection, setConnection] = useState<"loading" | "connected" | "fallback">("loading");
   const [settings, setSettings] = useState(false);
   const [chat, setChat] = useState(false);
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<{ q: string; a: string }[]>([]);
+  const [apiResult, setApiResult] = useState<{
+    diagnosis: string;
+    recommendation: string;
+    confidence: string;
+  } | null>(null);
+  const [apiStatus, setApiStatus] = useState<"idle" | "loading" | "error">("idle");
   const selected = campaigns.find((item) => item.id === selectedId) ?? campaigns[0];
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadCampaigns() {
+      const { data, error } = await supabase
+        .from("campaigns")
+        .select(`
+          id,
+          campaign_name,
+          channel,
+          status,
+          campaign_metrics (
+            spend,
+            sessions,
+            engagement_rate,
+            medium_high_intent_events,
+            package_bookings
+          )
+        `)
+        .order("campaign_name");
+
+      if (!active) return;
+      if (error || !data?.length) {
+        console.error("Nie udało się pobrać danych demonstracyjnych:", error);
+        setConnection("fallback");
+        return;
+      }
+
+      const mapped = data.map((row) => {
+        const narrative =
+          fallbackCampaigns.find((item) => item.name === row.campaign_name) ??
+          fallbackCampaigns[0];
+        const metric = Array.isArray(row.campaign_metrics)
+          ? row.campaign_metrics[0]
+          : row.campaign_metrics;
+        const tone =
+          row.status === "Działa dobrze"
+            ? "green"
+            : row.status.includes("potencjał")
+              ? "blue"
+              : row.status.includes("Przepalanie")
+                ? "red"
+                : row.status.includes("Za mało")
+                  ? "gray"
+                  : "amber";
+
+        return {
+          ...narrative,
+          id: narrative.id,
+          name: row.campaign_name,
+          channel: row.channel,
+          status: row.status,
+          tone,
+          spend: `${new Intl.NumberFormat("pl-PL").format(Number(metric?.spend ?? 0))} zł`,
+          sessions: new Intl.NumberFormat("pl-PL").format(metric?.sessions ?? 0),
+          engagement: `${Number(metric?.engagement_rate ?? 0).toLocaleString("pl-PL")}%`,
+          micro: new Intl.NumberFormat("pl-PL").format(metric?.medium_high_intent_events ?? 0),
+          bookings: String(metric?.package_bookings ?? 0),
+        };
+      });
+
+      setCampaigns(mapped);
+      setConnection("connected");
+    }
+
+    loadCampaigns();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const chatAnswer = useMemo(() => {
     const q = question.toLowerCase();
@@ -146,6 +226,26 @@ export default function Home() {
     setQuestion("");
   }
 
+  async function requestDemoDiagnosis() {
+    setApiStatus("loading");
+    const { data, error } = await supabase.rpc("get_demo_diagnosis", {
+      target_period_id: "20000000-0000-4000-8000-000000000001",
+    });
+
+    if (error || !data) {
+      console.error("Błąd demonstracyjnego wywołania API:", error);
+      setApiStatus("error");
+      return;
+    }
+
+    setApiResult({
+      diagnosis: data.diagnosis,
+      recommendation: data.recommendation,
+      confidence: data.confidence,
+    });
+    setApiStatus("idle");
+  }
+
   if (view === "start") {
     return (
       <main className="start-shell">
@@ -160,7 +260,7 @@ export default function Home() {
           </div>
           <div className="compare"><span>Okres porównawczy</span><strong>10–16 lipca 2026</strong><small>Równe okresy · te same dni tygodnia</small></div>
           <button className="primary large" onClick={() => setView("overview")}>Analizuj wyniki <span>→</span></button>
-          <div className="privacy">Dane demonstracyjne · brak połączenia z systemami zewnętrznymi</div>
+          <div className="privacy">Syntetyczne dane demonstracyjne · bez prawdziwych danych osobowych</div>
         </section>
       </main>
     );
@@ -183,11 +283,11 @@ export default function Home() {
       <main className="content">
         <header className="topbar">
           <div><strong>Hotel X</strong><span>Gdynia · 17–23 lipca 2026</span></div>
-          <div className="top-actions"><span className="demo-pill">Dane demonstracyjne</span><button onClick={() => setChat(true)}>✦ Zapytaj dane</button></div>
+          <div className="top-actions"><span className="demo-pill">{connection === "connected" ? "Supabase · połączono" : connection === "loading" ? "Łączenie z bazą…" : "Tryb lokalny · fallback"}</span><button onClick={() => setChat(true)}>✦ Zapytaj dane</button></div>
         </header>
 
-        {view === "overview" && <Overview onCampaign={(id) => { setSelectedId(id); setView("campaign"); }} onAll={() => setView("campaigns")} onChat={() => setChat(true)} />}
-        {view === "campaigns" && <Campaigns onSelect={(id) => { setSelectedId(id); setView("campaign"); }} />}
+        {view === "overview" && <Overview campaigns={campaigns} apiResult={apiResult} apiStatus={apiStatus} onApiRequest={requestDemoDiagnosis} onCampaign={(id) => { setSelectedId(id); setView("campaign"); }} onAll={() => setView("campaigns")} onChat={() => setChat(true)} />}
+        {view === "campaigns" && <Campaigns campaigns={campaigns} onSelect={(id) => { setSelectedId(id); setView("campaign"); }} />}
         {view === "campaign" && <CampaignDetail campaign={selected} onBack={() => setView("campaigns")} onFunnel={() => setView("funnel")} />}
         {view === "funnel" && <Funnel />}
         {view === "channels" && <Channels />}
@@ -199,13 +299,41 @@ export default function Home() {
   );
 }
 
-function Overview({ onCampaign, onAll, onChat }: { onCampaign: (id: string) => void; onAll: () => void; onChat: () => void }) {
+function Overview({
+  campaigns,
+  apiResult,
+  apiStatus,
+  onApiRequest,
+  onCampaign,
+  onAll,
+  onChat,
+}: {
+  campaigns: Campaign[];
+  apiResult: { diagnosis: string; recommendation: string; confidence: string } | null;
+  apiStatus: "idle" | "loading" | "error";
+  onApiRequest: () => void;
+  onCampaign: (id: string) => void;
+  onAll: () => void;
+  onChat: () => void;
+}) {
   return <div className="page">
     <div className="page-heading"><div><span className="eyebrow">DIAGNOZA HOTELU</span><h1>Pakiet budzi zainteresowanie.<br/>Rezerwacja zatrzymuje się w silniku.</h1></div><span className="confidence amber">● Wysokie prawdopodobieństwo</span></div>
     <section className="diagnosis-card">
       <div className="diagnosis-icon">!</div>
       <div><h3>Rezerwacje pakietu „Wakacje w Gdyni” spadły z 7 do 2</h3><p>Ruch z kampanii wzrósł o 12%, a wybory terminu o 21%. Największy spadek występuje między pierwszym i drugim krokiem rezerwacji.</p>
       <div className="recommend"><span>REKOMENDACJA</span><strong>Nie zwiększaj całego budżetu. Sprawdź step2, dostępność i warunki pobytu na jedną noc.</strong></div></div>
+    </section>
+    <section className="api-test-card">
+      <div>
+        <span className="eyebrow">DEMONSTRACJA API</span>
+        <h3>Przechwyć rzeczywiste zapytanie JSON</h3>
+        <p>Przycisk wywołuje odczytową funkcję Supabase metodą POST. Nie zmienia żadnych danych.</p>
+      </div>
+      <button className="primary" onClick={onApiRequest} disabled={apiStatus === "loading"}>
+        {apiStatus === "loading" ? "Pobieranie…" : "Pobierz diagnozę z API"}
+      </button>
+      {apiResult && <div className="api-result"><strong>Odpowiedź API</strong><span>{apiResult.diagnosis}</span><small>{apiResult.confidence} · dane syntetyczne</small></div>}
+      {apiStatus === "error" && <div className="api-error">Nie udało się wywołać funkcji. Sprawdź, czy skrypt 06 został uruchomiony w Supabase.</div>}
     </section>
     <div className="metrics">
       <Metric label="Rezerwacje pakietu" value="2" delta="−71%" bad note="było 7" />
@@ -217,7 +345,6 @@ function Overview({ onCampaign, onAll, onChat }: { onCampaign: (id: string) => v
     <div className="insights">
       <article><span className="number">01</span><div><h3>Ruch nadal jest wartościowy</h3><p>Sesje zaangażowane wzrosły o 15%, a otwarcia pakietu o 18%.</p></div><span className="trend good">+15%</span></article>
       <article><span className="number">02</span><div><h3>Problem pojawia się po wyborze terminu</h3><p>Przejście step1 → step2 spadło z 9,8% do 5,4%.</p></div><span className="trend bad">−45%</span></article>
-      <article><span className="number">03</span><div><h3>Rośnie potrzeba kontaktu telefonicznego</h3><p>13 z 18 potwierdzonych rozmów dotyczyło pobytu na jedną noc.</p></div><span className="trend warn">13 rozmów</span></article>
     </div>
     <div className="two-col">
       <section><div className="section-title small"><div><span className="eyebrow">WYMAGAJĄ DECYZJI</span><h2>Kampanie</h2></div><button className="text-button" onClick={onAll}>Wszystkie →</button></div>
@@ -237,10 +364,10 @@ function Metric({ label, value, delta, note, bad, good }: any) {
   return <article className="metric"><span>{label}</span><strong>{value}</strong><div><b className={bad ? "bad" : good ? "good" : ""}>{delta}</b><small>{note}</small></div></article>;
 }
 
-function Campaigns({ onSelect }: { onSelect: (id: string) => void }) {
+function Campaigns({ campaigns, onSelect }: { campaigns: Campaign[]; onSelect: (id: string) => void }) {
   return <div className="page">
     <div className="page-heading"><div><span className="eyebrow">KAMPANIE</span><h1>Gdzie potrzebna jest decyzja?</h1><p>Ocena łączy reklamę, jakość ruchu, zachowanie i wynik sprzedażowy.</p></div></div>
-    <div className="filter-row"><button className="selected">Wszystkie <b>5</b></button><button>Dobre wyniki <b>1</b></button><button>Wymagają uwagi <b>2</b></button><button>Za mało danych <b>1</b></button></div>
+    <div className="filter-row"><button className="selected">Wszystkie <b>{campaigns.length}</b></button><button>Dobre wyniki <b>1</b></button><button>Wymagają uwagi <b>2</b></button><button>Za mało danych <b>1</b></button></div>
     <div className="campaign-table">
       <div className="table-head"><span>Kampania</span><span>Status</span><span>Wydatki</span><span>Jakość ruchu</span><span>Mikro-konw.</span><span>Rezerwacje</span><span/></div>
       {campaigns.map((c) => <button className="table-row" key={c.id} onClick={() => onSelect(c.id)}><span className="campaign-name"><i className={`channel ${c.channel.startsWith("Meta") ? "meta" : "google"}`}>{c.channel.startsWith("Meta") ? "M" : "G"}</i><span><strong>{c.name}</strong><small>{c.channel}</small></span></span><span><i className={`status ${c.tone}`}>{c.status}</i></span><span><strong>{c.spend}</strong><small className={c.spendDelta.includes("+") ? "bad-text" : ""}>{c.spendDelta}</small></span><span><strong>{c.engagement}</strong><small>zaangażowanie</small></span><span><strong>{c.micro}</strong><small>intencja śr./wys.</small></span><span><strong>{c.bookings}</strong><small>pakiet</small></span><span className="arrow">→</span></button>)}
