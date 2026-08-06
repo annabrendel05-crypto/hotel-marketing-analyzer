@@ -126,12 +126,6 @@ export default function Home() {
   const [chat, setChat] = useState(false);
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<{ q: string; a: string }[]>([]);
-  const [apiResult, setApiResult] = useState<{
-    diagnosis: string;
-    recommendation: string;
-    confidence: string;
-  } | null>(null);
-  const [apiStatus, setApiStatus] = useState<"idle" | "loading" | "error">("idle");
   const selected = campaigns.find((item) => item.id === selectedId) ?? campaigns[0];
 
   useEffect(() => {
@@ -226,26 +220,6 @@ export default function Home() {
     setQuestion("");
   }
 
-  async function requestDemoDiagnosis() {
-    setApiStatus("loading");
-    const { data, error } = await supabase.rpc("get_demo_diagnosis", {
-      target_period_id: "20000000-0000-4000-8000-000000000001",
-    });
-
-    if (error || !data) {
-      console.error("Błąd demonstracyjnego wywołania API:", error);
-      setApiStatus("error");
-      return;
-    }
-
-    setApiResult({
-      diagnosis: data.diagnosis,
-      recommendation: data.recommendation,
-      confidence: data.confidence,
-    });
-    setApiStatus("idle");
-  }
-
   if (view === "start") {
     return (
       <main className="start-shell">
@@ -286,7 +260,7 @@ export default function Home() {
           <div className="top-actions"><span className="demo-pill">{connection === "connected" ? "Supabase · połączono" : connection === "loading" ? "Łączenie z bazą…" : "Tryb lokalny · fallback"}</span><button onClick={() => setChat(true)}>✦ Zapytaj dane</button></div>
         </header>
 
-        {view === "overview" && <Overview campaigns={campaigns} apiResult={apiResult} apiStatus={apiStatus} onApiRequest={requestDemoDiagnosis} onCampaign={(id) => { setSelectedId(id); setView("campaign"); }} onAll={() => setView("campaigns")} onChat={() => setChat(true)} />}
+        {view === "overview" && <Overview campaigns={campaigns} onCampaign={(id) => { setSelectedId(id); setView("campaign"); }} onAll={() => setView("campaigns")} onChat={() => setChat(true)} />}
         {view === "campaigns" && <Campaigns campaigns={campaigns} onSelect={(id) => { setSelectedId(id); setView("campaign"); }} />}
         {view === "campaign" && <CampaignDetail campaign={selected} onBack={() => setView("campaigns")} onFunnel={() => setView("funnel")} />}
         {view === "funnel" && <Funnel />}
@@ -301,17 +275,11 @@ export default function Home() {
 
 function Overview({
   campaigns,
-  apiResult,
-  apiStatus,
-  onApiRequest,
   onCampaign,
   onAll,
   onChat,
 }: {
   campaigns: Campaign[];
-  apiResult: { diagnosis: string; recommendation: string; confidence: string } | null;
-  apiStatus: "idle" | "loading" | "error";
-  onApiRequest: () => void;
   onCampaign: (id: string) => void;
   onAll: () => void;
   onChat: () => void;
@@ -322,18 +290,6 @@ function Overview({
       <div className="diagnosis-icon">!</div>
       <div><h3>Rezerwacje pakietu „Wakacje w Gdyni” spadły z 7 do 2</h3><p>Ruch z kampanii wzrósł o 12%, a wybory terminu o 21%. Największy spadek występuje między pierwszym i drugim krokiem rezerwacji.</p>
       <div className="recommend"><span>REKOMENDACJA</span><strong>Nie zwiększaj całego budżetu. Sprawdź step2, dostępność i warunki pobytu na jedną noc.</strong></div></div>
-    </section>
-    <section className="api-test-card">
-      <div>
-        <span className="eyebrow">DEMONSTRACJA API</span>
-        <h3>Przechwyć rzeczywiste zapytanie JSON</h3>
-        <p>Przycisk wywołuje odczytową funkcję Supabase metodą POST. Nie zmienia żadnych danych.</p>
-      </div>
-      <button className="primary" onClick={onApiRequest} disabled={apiStatus === "loading"}>
-        {apiStatus === "loading" ? "Pobieranie…" : "Pobierz diagnozę z API"}
-      </button>
-      {apiResult && <div className="api-result"><strong>Odpowiedź API</strong><span>{apiResult.diagnosis}</span><small>{apiResult.confidence} · dane syntetyczne</small></div>}
-      {apiStatus === "error" && <div className="api-error">Nie udało się wywołać funkcji. Sprawdź, czy skrypt 06 został uruchomiony w Supabase.</div>}
     </section>
     <div className="metrics">
       <Metric label="Rezerwacje pakietu" value="2" delta="−71%" bad note="było 7" />
