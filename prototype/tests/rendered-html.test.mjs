@@ -1,11 +1,6 @@
 import assert from "node:assert/strict";
-import { access, readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
-
-const developmentPreviewMeta =
-  /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
-const templateRoot = new URL("../", import.meta.url);
-const previewRoot = new URL("../app/_sites-preview/", import.meta.url);
 
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -13,79 +8,85 @@ async function render() {
   const { default: worker } = await import(workerUrl.href);
 
   return worker.fetch(
-    new Request("http://localhost/", {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
+    new Request("http://localhost/", { headers: { accept: "text/html" } }),
+    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+    { waitUntil() {}, passThroughOnException() {} },
   );
 }
 
-test("server-renders the starter loading skeleton", async () => {
+test("unauthenticated root request is redirected to login", async () => {
   const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-
-  const html = await response.text();
-  assert.match(html, developmentPreviewMeta);
-  assert.match(html, /<title>Your site is taking shape<\/title>/i);
-  assert.match(html, /Building your site/);
-  assert.match(html, /Your site is taking shape/);
-  assert.match(
-    html,
-    /Your first version will appear here automatically when it’s ready\./,
-  );
-  assert.doesNotMatch(html, /Codex/);
-  assert.match(html, /react-loading-skeleton/);
-  assert.match(html, /role="status"/);
+  assert.equal(response.status, 307);
+  assert.equal(new URL(response.headers.get("location")).pathname, "/login");
 });
 
-test("keeps the loading skeleton scoped and disposable", async () => {
-  const [preview, css, page, layout, packageJson, files] = await Promise.all([
-    readFile(new URL("SkeletonPreview.tsx", previewRoot), "utf8"),
-    readFile(new URL("preview.css", previewRoot), "utf8"),
+test("dashboard analytics come only from local demo data", async () => {
+  const [page, demoData] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../package.json", import.meta.url), "utf8"),
-    readdir(previewRoot),
+    readFile(new URL("../lib/demo-data.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(page, /const \[selectedPeriodId, setSelectedPeriodId\] = useState/);
+  assert.match(page, /const period = demoPeriods\.find\(\(item\) => item\.id === selectedPeriodId\)/);
+  assert.match(page, /demoCampaignMetrics\.filter/);
+  assert.match(page, /demoHotelSales\.filter/);
+  assert.doesNotMatch(page, /supabase/i);
+  assert.doesNotMatch(page, /\.from\(/);
+  assert.match(demoData, /Syntetyczne dane prezentacyjne/);
+  assert.match(demoData, /export const demoPeriods/);
+  assert.match(demoData, /export const demoHotelSales/);
+  assert.match(page, /connection: "no_data" as const/);
+  assert.match(page, /NO_DATA_FOR_SELECTED_PERIOD/);
+});
+
+test("Supabase is used only for cookie-based authentication", async () => {
+  const [proxy, loginPage, loginForm, logout, client, server, envExample] = await Promise.all([
+    readFile(new URL("../proxy.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/login/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/login/login-form.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/logout-button.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/client.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/server.ts", import.meta.url), "utf8"),
+    readFile(new URL("../.env.example", import.meta.url), "utf8"),
   ]);
 
-  assert.deepEqual(files.sort(), ["SkeletonPreview.tsx", "preview.css"]);
-  assert.match(preview, /from "react-loading-skeleton"/);
-  assert.match(preview, /baseColor="#eceae7"/);
-  assert.match(preview, /highlightColor="#f9f8f6"/);
-  assert.match(preview, /duration=\{2\.8\}/);
-  assert.match(preview, /sites-skeleton-search-placeholder/);
-  assert.match(packageJson, /"react-loading-skeleton": "3\.5\.0"/);
+  assert.match(proxy, /supabase\.auth\.getUser\(\)/);
+  assert.match(proxy, /if \(!user && !isLogin\)/);
+  assert.match(proxy, /new URL\("\/login", request\.url\)/);
+  assert.match(proxy, /matcher: \["\/", "\/login"\]/);
+  assert.match(loginPage, /if \(user\) redirect\("\/"\)/);
+  assert.match(loginForm, /Hotel Marketing Analyzer/);
+  assert.match(loginForm, /Zaloguj się, aby przejść do analizy/);
+  assert.match(loginForm, /signInWithPassword/);
+  assert.match(loginForm, /Nieprawidłowy e-mail lub hasło/);
+  assert.doesNotMatch(loginForm, /signUp|signInWithOAuth|signInWithOtp/);
+  assert.match(logout, /supabase\.auth\.signOut\(\)/);
+  assert.match(logout, /router\.replace\("\/login"\)/);
+  assert.match(client, /createBrowserClient/);
+  assert.match(server, /createServerClient/);
+  assert.match(server, /await cookies\(\)/);
+  assert.match(envExample, /^NEXT_PUBLIC_SUPABASE_URL=/m);
+  assert.match(envExample, /^NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=/m);
+  assert.doesNotMatch(envExample, /SERVICE_ROLE|SECRET_KEY|password|eyJ/i);
+});
 
-  const shellIndex = preview.indexOf('className="sites-skeleton-shell"');
-  const statusIndex = preview.indexOf('className="sites-skeleton-status"');
-  assert.ok(shellIndex >= 0 && statusIndex > shellIndex);
-  assert.match(css, /position:\s*fixed/);
-  assert.match(css, /inset:\s*0/);
-  assert.match(css, /opacity:\s*0\.52/);
-  assert.match(css, /prefers-reduced-motion:\s*reduce/);
-  assert.doesNotMatch(css, /#020617|canvas|pets|progress/i);
-  assert.doesNotMatch(
-    preview,
-    /loading-spinner|status-mark|status-progress|canvas|cookie|random/i,
-  );
+test("overview v2 is business-first and preserves attribution boundaries", async () => {
+  const [page, css] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
 
-  assert.match(page, /export const metadata:\s*Metadata/);
-  assert.match(page, /"codex-preview": "development"/);
-  assert.match(page, /<SkeletonPreview \/>/);
-  assert.match(layout, /title:\s*"Starter Project"/);
-  assert.doesNotMatch(layout, /codex-preview|_sites-preview|themeColor|\bViewport\b/);
-  assert.doesNotMatch(css, /(^|\s)(html|body)\s*\{/m);
-
-  await assert.rejects(
-    access(new URL("public/_sites-preview", templateRoot)),
-  );
+  assert.match(page, /Czy marketing naprawdę wpływa na sprzedaż\?/);
+  assert.match(page, /DEMO — dane syntetyczne/);
+  assert.match(page, /Confirmed revenue/);
+  assert.match(page, /calculateRoas\(confirmedRevenue, marketingSpend\)/);
+  assert.match(page, /calculateTotalSales\(hotelSales\)/);
+  assert.match(page, /demoHotelSales/);
+  assert.match(page, /Meta Ads.*wysokointencyjnych etapów lejka/s);
+  assert.match(page, /Nie oznaczają automatycznie, że sprzedaż Direct, Booking\.com lub telefoniczna została wygenerowana przez Meta Ads/);
+  assert.doesNotMatch(page, /Meta (?:wygenerowała|wygenerował).*Booking\.com/i);
+  assert.match(page, /DATA CONFIDENCE:/);
+  assert.match(page, /onCampaign\(campaign\.id\)/);
+  assert.match(css, /@media\(max-width:1000px\)/);
+  assert.match(css, /@media\(max-width:760px\)/);
+  assert.match(css, /\.sales-channels\{display:grid/);
 });
