@@ -305,14 +305,6 @@ export default function Home() {
   const { campaigns, funnelMetrics, channelPaths, hotelSales, comparisonHotelSales, campaignMetrics, comparisonCampaignMetrics, connection } = periodData;
   const selected = campaigns.find((item) => item.id === selectedId) ?? campaigns[0] ?? fallbackCampaigns[0];
 
-  const chatAnswer = useMemo(() => {
-    const q = question.toLowerCase();
-    if (q.includes("meta") && q.includes("google")) return "Meta rozpoczęła 42% ścieżek domkniętych później przez Google Brand. To wskazuje, że Meta buduje popyt, a Google przejmuje użytkowników powracających z wyższą intencją.";
-    if (q.includes("rezerw")) return "Rezerwacje pakietu spadły z 7 do 2. Ruch i wybory terminu rosną, natomiast przejście step1 → step2 spadło z 9,8% do 5,4%. Problem najprawdopodobniej znajduje się w silniku rezerwacyjnym.";
-    if (q.includes("skal")) return "Wstępny potencjał ma kampania „Wakacje | Remarketing”. Jakość ruchu jest dobra, ale do potwierdzonej oceny sprzedażowej brakuje minimum 3 rezerwacji.";
-    return "Najważniejszym działaniem jest sprawdzenie drugiego kroku silnika rezerwacyjnego, dostępności oraz warunków pobytu na jedną noc. Kampanie nadal generują zainteresowanie, więc ich wyłączenie byłoby przedwczesne.";
-  }, [question]);
-
   function ask(text?: string) {
     const q = (text ?? question).trim();
     if (!q) return;
@@ -377,7 +369,7 @@ export default function Home() {
       </main>
 
       {settings && <Settings onClose={() => setSettings(false)} />}
-      {chat && <Chat messages={messages} question={question} setQuestion={setQuestion} ask={ask} answer={chatAnswer} periodLabel={currentPeriodLabel} onClose={() => setChat(false)} />}
+      {chat && <Chat messages={messages} question={question} setQuestion={setQuestion} ask={ask} periodLabel={currentPeriodLabel} onClose={() => setChat(false)} />}
     </div>
   );
 }
