@@ -1,18 +1,26 @@
 # Projekt techniczny BigQuery — Hotel Marketing Analyzer
 
-Wersja projektu: **0.2 — zaakceptowany projekt architektury BigQuery v1**. Data: 2026-09-06.
+Wersja projektu: **0.3 — zaakceptowana architektura BigQuery v1 po zmianie datasetów**. Data: 2026-09-08.
 
 Etap 4 — Projekt BigQuery, krok 4.1. Podstawa: [zaakceptowany kontrakt analityczny 0.2](ANALYTICS_CONTRACT.md), commit `bb3e2dd` (`docs: accept analytics contract v1`).
 
 **Zakres tego dokumentu:** projekt struktur, odpowiedzialności i późniejszego wdrożenia. Nazwy zasobów są propozycjami. Dokument nie tworzy zasobów, SQL, danych, poświadczeń ani integracji. Zaakceptowany kontrakt pozostaje bez zmian.
 
-Oznaczenia: **USTALONE** oznacza zapis kontraktu; **PROPOZYCJA** oznacza rozwiązanie techniczne tego projektu; **OTWARTE** oznacza decyzję wymagającą uzgodnienia. O01–O14 w sekcji 14 tworzą pełny rejestr otwartych kwestii wraz z ryzykiem i momentem decyzji.
+Oznaczenia: **USTALONE** oznacza zapis kontraktu lub jawną decyzję właścicielki; **PROPOZYCJA** oznacza rozwiązanie techniczne tego projektu; **OTWARTE** oznacza decyzję wymagającą uzgodnienia. O01–O14 w sekcji 14 tworzą pełny rejestr otwartych kwestii wraz z ryzykiem i momentem decyzji.
+
+## Zmiana architektury — 2026-09-08
+
+**USTALONE przez właścicielkę:** projekt `hotel-marketing-analyzer-demo` oraz sześć datasetów `ga4`, `meta_ads`, `google_ads`, `profitroom`, `hma_core`, `hma_app` zostały ręcznie utworzone w EU. Jest to informacja właścicielki, bez weryfikacji dostępu do chmury przez Codex. Tabela `ga4.events_demo` pozostaje planowana; ten dokument nie potwierdza utworzenia tabel ani załadowania danych.
+
+Wcześniejsza architektura z datasetami `hma_raw`, `hma_mart` i `hma_ops` została zastąpiona. Nie są one częścią bieżącego projektu. Źródła otrzymują osobne datasety, a hma_core skupia czyszczenie, ujednolicanie i łączenie. **USTALONE:** pomocnicze agregaty, tabele oczyszczone i tabele łączące źródła znajdują się w hma_core. Rejestry operacyjne, historia uruchomień i osobne logi importów pozostają poza zakresem v1; hma_core ich nie zawiera. hma_app zawiera wyłącznie końcowe bezpieczne widoki. Jest to zmiana projektu dokumentacji, bez fizycznej migracji zasobów.
+
+Kontrakt analityczny 0.2, definicje KPI, Supabase jako miejsce konfiguracji, ręczne wdrażanie i zabezpieczenia kosztów pozostają aktualne. Poprzednia akceptacja projektu 0.2 jest historyczna; wersja 0.3 została zaakceptowana po zmianie datasetów.
 
 ## 1. Cel i wynik przeglądu repozytorium
 
 Celem jest przygotowanie jednej sprawdzalnej drogi od obserwacji źródłowej do liczby w aplikacji. Właścicielka hotelu ma widzieć, z czego wynika wskaźnik, na jaki okres się odnosi i dlaczego czasem pozostaje niedostępny. Programista otrzymuje ziarno danych, klucze, typy, etapy przetwarzania i kontrakt odczytu.
 
-Sprawdzony punkt wyjścia:
+Historyczny punkt wyjścia z przeglądu 2026-09-06:
 
 - Gałąź `refactor/bigquery-foundation`; przed rozpoczęciem katalog roboczy czysty.
 - Ostatnie commity: `bb3e2dd` — akceptacja kontraktu; `826a6b3` — migracja na Next.js; `70d737b` — demo z Auth; `571f585` — usunięcie demonstracyjnego bloku API; `d2e99cd` — notatka o teście wdrożenia.
@@ -47,49 +55,39 @@ Zinwentaryzowano śledzone pliki i konfiguracje bez odczytu plików środowiska.
 
 ```mermaid
 flowchart TD
-    META["Meta Ads — dane syntetyczne"] --> RAW["hma_raw — obserwacje i rewizje źródeł"]
-    GOOGLE["Google Ads — dane syntetyczne"] --> RAW
-    GA["GA4 i Booking Engine — zdarzenia"] --> RAW
-    PR["Profitroom — rezerwacje i statusy"] --> RAW
-    OBS["Obserwacje marketingowe"] --> RAW
-    RAW --> CORE["hma_core — normalizacja i deduplikacja"]
-    CORE --> ID["purchase ↔ rezerwacja: tożsamość"]
-    CORE --> PAID["obserwacja ↔ płatny marketing: kwalifikacja"]
-    ID --> LINK["unikalny zbiór powiązanych rezerwacji"]
-    PAID --> LINK
-    CORE --> MART["hma_mart — dzienne liczniki i mianowniki"]
-    LINK --> MART
-    OPS["hma_ops — importy, kontrole, publikacja"] --> MART
-    MART --> APP["hma_app — sześć widoków daily"]
-    SB["Supabase — użytkownicy, członkostwo, ustawienia, progi"] --> SERVER["Next.js na Railway — autoryzacja, agregacja, KPI i reguły"]
+    GA["ga4 — events_demo: syntetyczne zdarzenia"] --> CORE["hma_core — czyszczenie, normalizacja i łączenie"]
+    META["meta_ads — syntetyczne raporty"] --> CORE
+    GOOGLE["google_ads — syntetyczne raporty"] --> CORE
+    PR["profitroom — syntetyczne rezerwacje i rewizje"] --> CORE
+    CORE --> ID["Tożsamość purchase–rezerwacja i osobna kwalifikacja płatna"]
+    ID --> AGG["hma_core — dzienne agregaty, jakość i publikacja"]
+    CORE --> AGG
+    AGG --> APP["hma_app — sześć bezpiecznych widoków daily"]
+    SB["Supabase — członkostwo, ustawienia i progi"] --> SERVER["Next.js — autoryzacja, okresy, KPI i reguły"]
+    SB -. "wersjonowane mapy i zakresy" .-> CORE
     APP --> SERVER
-    SB -. "zatwierdzona wersja map i zakresów jako wejście procesu" .-> CORE
-    SERVER --> UI["Dashboard — oba wybrane okresy i aktualność"]
-    SERVER -. "kolejny krok: gotowe fakty i reguły" .-> AI["AI — kontrolowany komentarz z referencjami"]
+    SERVER --> UI["Dashboard"]
+    SERVER -. "późniejszy etap" .-> AI["AI — komentarz do gotowych wyników"]
 ```
 
 Przerywane połączenie konfiguracji oznacza przyszły odczyt wersjonowanej konfiguracji, nie nową bazę ustawień w BigQuery. Proces zapisuje przy faktach identyfikator użytej konfiguracji i rezultat kwalifikacji. Wartości progów skuteczności pozostają w Supabase; końcowa pewność i ocena są wyliczane na serwerze.
 
 ## 3. Projekt, datasety i lokalizacja
 
-Wszystkie poniższe nazwy są **PROPOZYCJĄ**, bez sprawdzenia dostępności ani tworzenia zasobów:
+**USTALONE:** istniejący według informacji właścicielki projekt demonstracyjny ma ID `hotel-marketing-analyzer-demo`. Wszystkie sześć datasetów znajduje się w **EU**. Strefa prezentacji danych pozostaje `Europe/Warsaw`. Lokalizacja datasetu jest niezależna od strefy czasu i pozostaje niezmienna w miejscu; przyszłe przenoszenie danych wymaga odrębnego planu.
 
-- Nazwa opisowa: **Hotel Marketing Analyzer — Demo**.
-- Wzorzec ID projektu: `hma-analytics-demo-<unikalny-sufiks>`; sufiks zostanie wybrany przy zatwierdzaniu Google Cloud.
-- Przyszła produkcja: odrębny projekt `hma-analytics-prod-<unikalny-sufiks>`, te same nazwy datasetów.
-- **USTALONE:** rekomendowana lokalizacja wszystkich datasetów demo to **`EU`**. Istniejące środowisko danych właścicielki działa w EU; osobny projekt demo zapewnia oddzielenie środowisk bez potrzeby wybierania innej lokalizacji. Lokalizacji istniejącego datasetu nie można zmienić w miejscu; przeniesienie danych wymaga osobnej operacji do innego datasetu. Zgodna lokalizacja pozostawia możliwość przyszłego, świadomie zatwierdzonego transferu lub pracy z istniejącymi danymi. Nie oznacza to obecnego połączenia środowisk. Strefa prezentacji pozostaje `Europe/Warsaw`, niezależnie od lokalizacji danych. [Dokumentacja lokalizacji BigQuery](https://docs.cloud.google.com/bigquery/docs/locations).
+Demo jest oddzielone od `creatic-503805` i nie otrzymuje automatycznego dostępu do innych projektów. Rzeczywisty eksport GA4 służył właścicielce wyłącznie jako referencja struktury. Do demo trafiają wyłącznie dane syntetyczne, bez rekordów klientów, ich identyfikatorów użytkowników i adresów odwiedzanych stron. Codex nie odczytuje tego eksportu ani danych chmurowych.
 
-**Granica środowiska:** demo będzie osobnym projektem Google Cloud. Nie korzysta obecnie z `creatic-503805`, nie odczytuje prawdziwych danych klientów i zawiera wyłącznie dane syntetyczne. Utworzenie projektu demo nie nadaje automatycznego dostępu do innych projektów. Ewentualne przyszłe użycie istniejących danych wymaga osobnej decyzji, sprawdzenia zakresu i jawnego nadania uprawnień.
+| Dataset | Rola | Planowane struktury i dostęp |
+|---|---|---|
+| `ga4` | Źródłowe zdarzenia GA4 z zachowaniem zagnieżdżeń | events_demo; dostęp procesu, bez bezpośredniego odczytu aplikacji |
+| `meta_ads` | Źródłowe koszty i wyniki Meta | meta_ads_daily; własna polityka konwersji |
+| `google_ads` | Źródłowe koszty i wyniki Google Ads | google_ads_daily; odrębność od Organic |
+| `profitroom` | Kanoniczne rezerwacje i ich rewizje | profitroom_booking_revisions; ewentualny osobny eksport booking_engine_events wymaga potwierdzenia |
+| `hma_core` | Czyszczenie, ujednolicanie, deduplikacja i łączenie | Tabele oczyszczone, łączenie źródeł i pomocnicze agregaty; bez rejestrów operacyjnych; dostęp przetwarzania |
+| `hma_app` | Końcowe, bezpieczne widoki aplikacyjne | Sześć widoków daily; serwerowy odczyt po autoryzacji hotelu |
 
-| Dataset | Przeznaczenie | Użytkownik techniczny | Zawartość |
-|---|---|---|---|
-| `hma_raw` | Historia importowanych obserwacji, bez zmiany znaczenia źródła | Import i przetwarzanie | 6 tabel źródłowych |
-| `hma_core` | Znormalizowane fakty, relacje i jednostki przed agregacją | Przetwarzanie | 10 tabel pośrednich |
-| `hma_mart` | Spójne dzienne liczniki z metadanymi jakości | Przetwarzanie; odczyt pośrednio przez widoki | 6 tabel agregatów |
-| `hma_app` | Stabilny kontrakt odczytu aplikacji | Serwer aplikacji | 6 widoków logicznych |
-| `hma_ops` | Ślad importów, publikacja i kwarantanna błędów | Import/przetwarzanie/utrzymanie | 3 tabele operacyjne |
-
-Rozdzielenie datasetów odpowiada granicom dostępu, a nie osobnym produktom. W małym demo operacje mogą być wykonywane jednym kontrolowanym procesem. Dzienna częstotliwość nie wymaga strumieniowania.
+W dalszym opisie raw oznacza rolę danych źródłowych w czterech datasetach, mart — rolę agregatów wewnątrz hma_core, rejestry operacyjne pozostają poza v1. Raw i mart nie są osobnymi datasetami. Projekt produkcyjny i jego ID pozostają przyszłą decyzją.
 
 **USTALONE:** tabele ustawień hotelu, członkostwa i progów KPI pozostają w Supabase. BigQuery przechowuje wyłącznie odniesienia do wersji, wyniki normalizacji oraz fakty jakości. Projekt nie zakłada `hotel_thresholds` w BigQuery.
 
@@ -97,7 +95,7 @@ Rozdzielenie datasetów odpowiada granicom dostępu, a nie osobnym produktom. W 
 
 ### 4.1. Typy i NULL
 
-**PROPOZYCJA:** poniższe zestawy kolumn są dziedziczone przez tabele opisane w sekcjach 5–8. W listach kolumn `?` oznacza NULL dozwolone, brak `?` — wymagana wartość na tym etapie walidacji. Pola surowe mogą być niepoprawne lub nieznane; dostają kwarantannę i kod powodu zamiast domyślnej liczby.
+**PROPOZYCJA:** poniższe zestawy kolumn są dziedziczone przez tabele opisane w sekcjach 5–8. W listach kolumn `?` oznacza NULL dozwolone, brak `?` — wymagana wartość na tym etapie walidacji. Pola surowe mogą być niepoprawne lub nieznane; otrzymują kod jakości i pozostają poza zależnym obliczeniem zamiast domyślnej liczby.
 
 | Typ BigQuery | Zastosowanie |
 |---|---|
@@ -116,13 +114,22 @@ Kwoty w adapterze Next.js należy przenosić w sposób zachowujący dziesiętną
 
 ### 4.2. Zestawy metadanych
 
-**RAW_META**, we wszystkich sześciu raw: `hotel_id STRING`, `batch_id STRING`, `raw_row_id STRING`, `source_record_key STRING?`, `source_revision STRING?`, `source_updated_at TIMESTAMP?`, `extracted_at TIMESTAMP`, `ingested_at TIMESTAMP`, `ingest_date DATE`, `metric_date DATE?`, `source_timezone STRING?`, `source_payload JSON?`, `payload_hash STRING`, `is_synthetic BOOL`, `scenario_id STRING?`, `generator_version STRING?`. Dla demo ostatnie dwa pola są wymagane. `raw_row_id` opisuje pozycję z jednego eksportu; nie zastępuje klucza biznesowego.
+**RAW_META**, w źródłach poza jawnym wariantem GA4 z sekcji 5.3: `hotel_id STRING`, `batch_id STRING`, `raw_row_id STRING`, `source_record_key STRING?`, `source_revision STRING?`, `source_updated_at TIMESTAMP?`, `extracted_at TIMESTAMP`, `loaded_at TIMESTAMP`, `source_system STRING`, `ingest_date DATE`, `metric_date DATE?`, `source_timezone STRING?`, `source_payload JSON?`, `payload_hash STRING`, `is_synthetic BOOL`, `scenario_id STRING?`, `generator_version STRING?`. Dla demo ostatnie dwa pola są wymagane. `raw_row_id` opisuje pozycję z jednego eksportu; nie zastępuje klucza biznesowego.
 
-**CORE_META**, we wszystkich core: `hotel_id STRING`, `metric_date DATE`, `date_basis STRING`, `as_of_at TIMESTAMP`, `processed_at TIMESTAMP`, `source_batch_ids ARRAY<STRING>`, `contract_version STRING` = `0.2`, `transform_version STRING`, `config_version STRING?`, `is_synthetic BOOL`, `scenario_id STRING?`, `metric_status STRING`, `reason_codes ARRAY<STRING>`. `config_version` jest wymagane dla faktów zależnych od map/kwalifikacji. Brak takiej wersji daje stan niedostępności kwalifikacji.
+**CORE_META**, w tabelach faktów z sekcji 6: `hotel_id STRING`, `metric_date DATE`, `date_basis STRING`, `as_of_at TIMESTAMP`, `processed_at TIMESTAMP`, `loaded_at TIMESTAMP`, `source_system STRING`, `batch_id STRING`, `source_batch_ids ARRAY<STRING>`, `contract_version STRING` = `0.2`, `transform_version STRING`, `config_version STRING?`, `is_synthetic BOOL`, `scenario_id STRING?`, `metric_status STRING`, `reason_codes ARRAY<STRING>`. `config_version` jest wymagane dla faktów zależnych od map/kwalifikacji. Brak takiej wersji daje stan niedostępności kwalifikacji.
 
-**APP_META**, we wszystkich sześciu mart i sześciu app, dokładnie jak N.1 kontraktu: `hotel_id STRING`, `metric_date DATE`, `date_basis STRING`, `as_of_at TIMESTAMP`, `updated_at TIMESTAMP`, `source_watermark_at TIMESTAMP?`, `contract_version STRING`, `is_synthetic BOOL`, `metric_status STRING`, `reason_codes ARRAY<STRING>`. Wszystkie oprócz watermarku są wymagane. Tabele mart dodatkowo mają `release_id STRING` i `transform_version STRING`; widoki udostępniają jedną opublikowaną rewizję. Wersja konfiguracji wiążąca proces znajduje się również w rejestrze publikacji.
+**APP_META**, we wszystkich sześciu mart i sześciu app, dokładnie jak N.1 kontraktu: `hotel_id STRING`, `metric_date DATE`, `date_basis STRING`, `as_of_at TIMESTAMP`, `updated_at TIMESTAMP`, `source_watermark_at TIMESTAMP?`, `contract_version STRING`, `is_synthetic BOOL`, `metric_status STRING`, `reason_codes ARRAY<STRING>`. Wszystkie oprócz watermarku są wymagane. Tabele agregatów dodatkowo mają `release_id STRING`, `transform_version STRING`, `config_version STRING`, `loaded_at TIMESTAMP`, `source_system STRING`, `batch_id STRING` i `source_batch_ids ARRAY<STRING>`. Widoki udostępniają aktualny zatwierdzony zestaw; release_id jest oznaczeniem wersji danych, a nie odwołaniem do rejestru uruchomień.
 
-**OPS_META:** `hotel_id STRING`, `is_synthetic BOOL`; daty i klucze każdego rejestru są wskazane w sekcji 8.
+**Podstawowa identyfikowalność v1:** pola techniczne są przechowywane bezpośrednio we właściwych tabelach, odpowiednio do źródła:
+
+| Pole | Typ | Znaczenie |
+|---|---|---|
+| `loaded_at` | TIMESTAMP | Moment załadowania danego rekordu lub wyniku; odrębny od czasu zdarzenia i utworzenia rezerwacji |
+| `source_system` | STRING | Jawne źródło, np. ga4, meta_ads, google_ads, profitroom; dla połączeń jawne oznaczenie wieloźródłowej transformacji |
+| `batch_id` | STRING | Identyfikator partii danych; dla agregatu identyfikuje partię wyniku, a source_batch_ids zachowuje referencje do wejść |
+| `is_synthetic` | BOOL | true dla wszystkich danych demo |
+
+Pola te są wymagane dla planowanych rekordów demo. `ingest_date` jest datą UTC wyprowadzoną z loaded_at. Źródłowy timestamp importu, jeśli występuje, może pozostać osobnym polem opisanym przez adapter. Metadane pozwalają odtworzyć pochodzenie dostępnych rekordów; same nie potwierdzają kompletności importu ani nie dokumentują nieudanego uruchomienia.
 
 ### 4.3. Klucze, relacje i semantyka dat
 
@@ -143,7 +150,7 @@ Klucze w tym projekcie są regułami unikalności sprawdzanymi przed publikacją
 | `booking_created_at` | Pierwotne utworzenie rezerwacji; wyznacza `metric_date` sprzedaży |
 | `source_updated_at` | Rewizja statusu/wartości w źródle; wybór aktualnej wersji |
 | `check_in_date`, `check_out_date` | Kontekst przyszłego pobytu; osobny od daty sprzedaży |
-| `extracted_at`, `ingested_at` | Pobranie i zapis; import nie zmienia daty biznesowej |
+| `extracted_at`, `loaded_at` | Pobranie i zapis; import nie zmienia daty biznesowej |
 | `as_of_at`, `updated_at` | Stan danych i publikacja; pokazywane jako aktualność |
 | `cohort_started_at` | Jeden moment przypisania journey do kohorty lejka |
 | `outcome_at` | Wynik ścieżki; dla rezerwacji wynika z daty utworzenia Profitroom |
@@ -152,9 +159,9 @@ Dzień docelowy wyznacza `Europe/Warsaw`, z granicami lokalnych dni i poprawną 
 
 ## 5. Tabele raw — obserwacje źródłowe
 
-To projekt wejścia adapterów i generatora syntetycznego, a nie deklaracja, że obecnie posiadamy takie eksporty. Każda tabela dziedziczy RAW_META. Partycja wszystkich raw: **`ingest_date`**, aby zachować również późne rewizje starych dat. Klaster: **`hotel_id`**, następnie wskazane kolumny. PK fizyczny: `(hotel_id, batch_id, raw_row_id)`; klucz logiczny opisuje deduplikację między batchami.
+To projekt wejścia adapterów i generatora syntetycznego, a nie deklaracja, że obecnie posiadamy takie eksporty. Domyślnie tabela dziedziczy RAW_META; wyjątek GA4 opisuje sekcja 5.3. Domyślna partycja źródeł poza ga4.events_demo: **`ingest_date`**, aby zachować również późne rewizje starych dat. Klaster: **`hotel_id`**, następnie wskazane kolumny. PK fizyczny: `(hotel_id, batch_id, raw_row_id)`; klucz logiczny opisuje deduplikację między batchami.
 
-### 5.1. `hma_raw.meta_ads_daily`
+### 5.1. `meta_ads.meta_ads_daily`
 
 - Grain: jeden wiersz raportu Meta dla konta, kampanii, dnia i rodzaju rekordu: `delivery` lub `conversion`, w jednej rewizji eksportu. Koszt pochodzi z delivery; akcje z conversion. To typowana otoczka raportu źródłowego.
 - Klucz logiczny: hotel + account + campaign + source_report_date + record_type + conversion_action + policy + source_breakdown_key. Puste zastosowanie to jawne `not_applicable`; nieznana akcja/polityka ma NULL i jakość.
@@ -162,21 +169,53 @@ To projekt wejścia adapterów i generatora syntetycznego, a nie deklaracja, że
 - Pola: `account_id STRING`, `campaign_id STRING`, `campaign_name STRING?`, `source_report_date DATE`, `record_type STRING`, `source_breakdown_key STRING`, `currency_code STRING?`, `ad_spend NUMERIC?`, `impressions INT64?`, `outbound_clicks INT64?`, `click_type STRING?`, `conversion_action STRING?`, `platform_conversions NUMERIC?`, `platform_revenue NUMERIC?`, `platform_attribution_model STRING?`, `platform_attribution_window STRING?`, `platform_date_basis STRING?`.
 - Delivery ma koszt jeden raz. Jeśli eksport powtarza koszt przy akcjach, adapter zachowuje payload, a do modelu delivery wybiera jeden koszt kontrolowany sumą. Dodatkowe breakdowny są odrębnym zakresem importu, z kontrolą pokrywania sum.
 
-### 5.2. `hma_raw.google_ads_daily`
+### 5.2. `google_ads.google_ads_daily`
 
 - Grain, klucze, kolumny i klaster jak w Meta, lecz dane pochodzą z Google Ads; odrębna tabela zachowuje odrębną semantykę platformy.
 - Dodatkowo `cost_micros INT64?` zachowuje źródłową jednostkę, jeśli używa jej wybrany eksport. Adapter wyznacza `ad_spend NUMERIC` zgodnie z opisem jednostki; dokładny format importu wymaga O03.
 - Wybrana akcja zakupowa, okno i model są jawne. Google Organic pochodzi z obserwacji ruchu, a nie z kosztów Google Ads.
 
-### 5.3. `hma_raw.ga4_events`
+### 5.3. `ga4.events_demo` — projekt architektoniczny
 
-- Grain: jedna zarejestrowana obserwacja GA4 w rewizji eksportu; JSON zachowuje wyłącznie dopuszczone parametry.
-- Klucz logiczny: hotel + property/stream + źródłowy event ID albo uzgodniony deterministyczny klucz. Duplikaty eksportu są rozróżniane od realnie powtarzanych zdarzeń.
-- Klaster: `hotel_id, property_id, event_name, browser_token`.
-- Pola: `property_id STRING`, `stream_id STRING?`, `source_event_id STRING?`, `event_name STRING`, `event_at TIMESTAMP`, `source_sequence INT64?`, `browser_token STRING?`, `source_session_id STRING?`, `transaction_token STRING?`, `transaction_namespace STRING?`, `source STRING?`, `medium STRING?`, `campaign_id STRING?`, `ad_account_id STRING?`, `click_token STRING?`, `consent_state STRING?`, `engagement_time_msec INT64?`, `session_engaged BOOL?`, `event_value NUMERIC?`, `currency_code STRING?`.
-- Brak identyfikatora pozostawia zdarzenie jako obserwację, lecz ogranicza unikalne sesje/journey i powiązania. Eksport natywny GA4 może mieć inną strukturę; późniejszy adapter odwzoruje ją do tego wejścia.
+**USTALONE:** syntetyczna tabela zachowuje najważniejsze elementy zagnieżdżonego eksportu GA4. Nazwy i typy odniesiono do [oficjalnego schematu eksportu GA4](https://support.google.com/analytics/answer/7029846?hl=en); zakresy źródeł ruchu opisuje [dokumentacja atrybucji GA4](https://developers.google.com/analytics/bigquery/traffic-attribution-data). Rzeczywisty eksport jest referencją struktury, a nie źródłem rekordów. To celowy podzbiór schematu, nie deklaracja pełnej zgodności z każdym wariantem eksportu.
 
-### 5.4. `hma_raw.booking_engine_events`
+**Grain:** jeden syntetyczny event jednej przeglądarki/urządzenia w strumieniu. `event_timestamp` ani user_pseudo_id samodzielnie nie są unikalnym kluczem. **PROPOZYCJA:** techniczny klucz `hotel_id + demo_event_id`; tożsamość batcha i rekordu zapewnia idempotencję importu, zaś deduplikacja biznesowa powstaje w core według O05. Identyfikatory użytkowników, transakcji, strumieni i kampanii są wygenerowane od podstaw.
+
+| Pole / ścieżka | Typ BigQuery / tryb | Znaczenie i brak wartości |
+|---|---|---|
+| event_date | STRING, wymagane | Dzień źródłowy YYYYMMDD; walidowany względem jawnej strefy źródła |
+| event_timestamp | INT64, wymagane | Mikrosekundy od epoki UTC; core wyprowadza event_at TIMESTAMP |
+| event_name | STRING, wymagane | Jedna z planowanych nazw poniżej |
+| event_params | RECORD REPEATED, czyli ARRAY<STRUCT> | Lista parametrów; pusta lista oznacza brak parametrów |
+| event_params.key | STRING | Nazwa parametru; duplikaty klucza wymagają kontroli przed spłaszczeniem |
+| event_params.value | RECORD | Typowana wartość parametru |
+| event_params.value.string_value | STRING, NULL dozwolone | Tekst parametru |
+| event_params.value.int_value | INT64, NULL dozwolone | Całkowita wartość parametru |
+| event_params.value.float_value / double_value | FLOAT64, NULL dozwolone | Pola źródłowe wartości zmiennoprzecinkowej; oczekiwany jeden nośnik wartości na parametr |
+| user_pseudo_id | STRING, NULL dozwolone | Wyłącznie syntetyczny identyfikator; brak ogranicza sesje i journey |
+| privacy_info | RECORD, NULL dozwolone | analytics_storage, ads_storage, uses_transient_token jako nullable STRING; stany zgód i nieznany pomiar |
+| device | RECORD, NULL dozwolone | Proponowany podzbiór: category, operating_system jako nullable STRING; web_info.browser jako nullable STRING |
+| traffic_source | RECORD, NULL dozwolone | name, source, medium jako nullable STRING; źródło pierwszego pozyskania użytkownika, osobne od sesji |
+| session_traffic_source_last_click | RECORD, NULL dozwolone | Sesyjne dane atrybucji; podzbiór manual_campaign i google_ads_campaign, opisany poniżej |
+| stream_id | STRING, wymagane w demo | Syntetyczny strumień przypisany do hotelu |
+| platform | STRING, wymagane w demo | WEB dla planowanego scenariusza przeglądarkowego |
+| ecommerce | RECORD, NULL dozwolone | Dane transakcji; brak dla zdarzeń innych niż zakup jest oczekiwany |
+| ecommerce.transaction_id | STRING, NULL dozwolone | Syntetyczna tożsamość zakupu; wymagane dla scenariusza wiarygodnego połączenia |
+| ecommerce.purchase_revenue | FLOAT64, NULL dozwolone | Wartość raportowana w zdarzeniu GA4; core waliduje i normalizuje do NUMERIC, waluta jawna |
+
+**PROPOZYCJA podzbioru atrybucji:** `session_traffic_source_last_click.manual_campaign` jest nullable RECORD z polami `campaign_id`, `campaign_name`, `source`, `medium` typu nullable STRING; `google_ads_campaign` jest nullable RECORD z `customer_id`, `campaign_id`, `campaign_name` typu nullable STRING. Lista pól jest projektem podzbioru, do potwierdzenia przy schemacie syntetycznym. Brak sesyjnego źródła nie jest automatycznie Direct; source pierwszego pozyskania nie zastępuje sesyjnego przypisania. Brand wymaga mapowania, a tożsamość transakcji pozostaje odrębna od dowodu płatnego marketingu.
+
+**Otoczka demonstracyjna:** wymagane `hotel_id STRING`, `demo_event_id STRING`, `batch_id STRING`, `raw_row_id STRING`, `is_synthetic BOOL=true`, `scenario_id STRING`, `generator_version STRING`, `loaded_at TIMESTAMP`, `source_system STRING` = `ga4`, `ingest_date DATE`, `source_timezone STRING`. Pozostałe metadane RAW_META są propozycją rozszerzenia; tabela zachowuje natywne pola GA4 zamiast wymagać płaskich browser_token/event_at na wejściu. **PROPOZYCJA:** dodatkowe `metric_date DATE` wyprowadzone z event_timestamp w Europe/Warsaw jako kolumna partycjonowania; klaster hotel_id, event_name, stream_id, user_pseudo_id. To jawny wyjątek od partycji ingest_date pozostałych źródeł. W core powstają normalizowane identyfikatory, sesje i zdarzenia.
+
+**Planowane zdarzenia:** `session_start`, `page_view`, `user_engagement`, `engaged_view`, `step1_dates_and_rooms`, `step2_extras`, `begin_checkout`, `purchase`, `click_tel`, `click_mail`, `form_submit`, `open_apartment_details`, `open_package_details`.
+
+Proponowane parametry obejmują ga_session_id, session_engaged, engagement_time_msec, currency oraz syntetyczne page_location/page_referrer. Adresy są generowane np. w domenie hotel-demo.example; kopiowanie rzeczywistych URL, query strings i identyfikatorów z referencji jest poza zakresem demo. Wartości i rozkłady zdarzeń wymagają osobnego scenariusza O09.
+
+Nazwy niestandardowych zdarzeń są nazwami demonstracyjnymi, nie gwarancją znaczenia. Mapa kolejności etapów, znaczenie engaged_view, kwalifikacja form_submit i obsługa powtórek pozostają O05. click_tel i click_mail są intencją, a nie potwierdzoną rozmową. Zakup z GA4 jest obserwacją; status i wartość aktywnej rezerwacji pochodzą z Profitroom. Rozwinięcie event_params do wielu wierszy wymaga ponownego sprowadzenia do grain eventu przed liczeniem kosztów i konwersji.
+
+### 5.4. `profitroom.booking_engine_events` — opcjonalny osobny eksport
+
+**DO DECYZJI:** tabela powstaje wyłącznie przy osobnym źródle zdarzeń Profitroom/Booking Engine. Zdarzenia booking engine zebrane przez GA4 pozostają w ga4.events_demo i nie wymagają drugiej kopii.
 
 - Grain: jedno zdarzenie booking engine, np. etap, purchase, telefon/e-mail, w rewizji importu.
 - Klucz logiczny: hotel + engine_instance + source_event_id; przy braku ID reguła O05.
@@ -184,7 +223,7 @@ To projekt wejścia adapterów i generatora syntetycznego, a nie deklaracja, że
 - Pola: `engine_instance_id STRING`, `source_event_id STRING?`, `event_name STRING`, `event_at TIMESTAMP`, `source_sequence INT64?`, `browser_token STRING?`, `source_session_id STRING?`, `transaction_namespace STRING?`, `transaction_token STRING?`, `source_booking_id STRING?`, `source STRING?`, `medium STRING?`, `campaign_id STRING?`, `click_token STRING?`, `consent_state STRING?`, `event_value NUMERIC?`, `currency_code STRING?`.
 - Purchase w GA4 i booking engine może reprezentować tę samą transakcję. Odrębność źródeł pozostaje w raw, wspólna tożsamość jest ustalana przed liczeniem rezerwacji.
 
-### 5.5. `hma_raw.profitroom_booking_revisions`
+### 5.5. `profitroom.profitroom_booking_revisions`
 
 - Grain: stan jednej rezerwacji z jednego eksportu; kolejne eksporty zachowują historię zmian.
 - Klucz logiczny: hotel + source_booking_id + źródłowa rewizja/czas aktualizacji. Tożsamość rezerwacji: hotel + source_booking_id.
@@ -193,13 +232,17 @@ To projekt wejścia adapterów i generatora syntetycznego, a nie deklaracja, że
 - Mapowanie transaction do rezerwacji może być dostarczone w dodatkowej obserwacji adaptera. Kolumna jest nullable do czasu potwierdzenia jej dostępności. Wymagane biznesowo pola z kontraktu podlegają kontroli próbki Profitroom (O02).
 - Brak rezerwacji w kolejnym pliku nie oznacza automatycznej anulacji; tryb pełny/delta i znaczenie usunięcia muszą być jawne.
 
-### 5.6. `hma_raw.marketing_observations`
+### 5.6. `hma_core.marketing_observations` — uporządkowane obserwacje
+
+**PROPOZYCJA:** znormalizowane obserwacje powstają w core z jawnych źródeł czterech datasetów; pochodzenie relacji transaction→booking wymaga O02. Brak osobnego datasetu obserwacji. Zachowujemy metadane pochodzenia RAW_META i regułę/wersję wyprowadzenia; tabela nie jest niezależnym źródłem prawdy.
 
 - Grain: jedna obserwacja lub jawne źródłowe wskazanie relacji, np. kliknięcie, źródło sesji, mapowanie transaction→booking. Jest dowodem wejściowym, nie wynikiem oceny skuteczności.
 - Klucz logiczny: hotel + observation_source + source_observation_id; odniesienie do zdarzenia zabezpiecza przed powtórnym liczeniem obserwacji wyprowadzonych z GA4/BE.
 - Klaster: `hotel_id, observation_type, transaction_token, campaign_id`.
 - Pola: `observation_source STRING`, `source_observation_id STRING`, `observation_type STRING` (`click`, `session_source`, `purchase_context`, `transaction_booking_map`), `observed_at TIMESTAMP`, `referenced_source_event_id STRING?`, `browser_token STRING?`, `source_session_id STRING?`, `transaction_namespace STRING?`, `transaction_token STRING?`, `source_booking_id STRING?`, `source STRING?`, `medium STRING?`, `platform STRING?`, `account_id STRING?`, `campaign_id STRING?`, `click_token STRING?`, `consent_state STRING?`, `evidence_origin STRING`.
 - Tabela może być pusta lub niekompletna; jakość opisuje ten stan. Indywidualne kliknięcia są warunkiem potwierdzonego click_arrival_rate, a nie założonym zasobem platform. Syntetyczny generator może je dostarczyć jawnie (O10).
+
+**Role źródeł:** GA4 jest źródłem danych o zachowaniu użytkowników i etapach lejka. Osobny eksport zdarzeń Booking Engine pozostaje opcjonalny. Profitroom jest kanonicznym źródłem rezerwacji, wartości, statusu i anulacji; zdarzenie purchase w GA4 nie zastępuje tego stanu.
 
 ## 6. Tabele core — normalizacja i relacje
 
@@ -251,9 +294,9 @@ Każda tabela jest w `hma_core`. PK nie zawiera metrycznej daty w tabelach jedno
 - Ads agregowane po kampanii/dniu, sales po kanale/dniu, links po hotelu/dniu. Overview łączy już zagregowane zbiory 1:1 po hotelu/dniu, dzięki czemu ilość zdarzeń nie mnoży kosztów ani rezerwacji.
 - Google Brand stanowi rozłączną klasę Google Ads w prezentacji; sumy platformy obejmują każdą kampanię raz.
 
-## 7. Mart i sześć widoków aplikacyjnych
+## 7. Dzienne agregaty w hma_core i sześć widoków aplikacyjnych
 
-**PROPOZYCJA:** sześć fizycznych tabel `hma_mart.<nazwa>_store` przechowuje kompletną opublikowaną wersję dziennych agregatów dla hotelu i `release_id`. Sześć widoków logicznych `hma_app.<nazwa>` wybiera aktywną publikację hotelu z `hma_ops.releases`. Logiczne widoki odczytują tabele bazowe; partycjonowanie i klastrowanie należą do tabel. [Widoki logiczne BigQuery](https://docs.cloud.google.com/bigquery/docs/views-intro).
+**PROPOZYCJA:** sześć fizycznych tabel `hma_core.<nazwa>_store` przechowuje kompletną opublikowaną wersję dziennych agregatów dla hotelu i `release_id`. Sześć widoków logicznych `hma_app.<nazwa>` odczytuje aktualny zatwierdzony zestaw agregatów. Nie zależą od tabeli rejestru publikacji. Sposób zachowania jednej spójnej wersji danych bez rejestrów wymaga ustalenia w O12; sam największy timestamp nie potwierdza poprawności zestawu. Logiczne widoki odczytują tabele bazowe; partycjonowanie i klastrowanie należą do tabel. [Widoki logiczne BigQuery](https://docs.cloud.google.com/bigquery/docs/views-intro).
 
 Każda tabela mart dziedziczy APP_META oraz metadane publikacji. Każdy widok eksponuje **wszystkie** kolumny swojej sekcji N.2–N.7 zaakceptowanego kontraktu, zachowując ich nazwy, typy i NULL. Poniżej podano grain, powstanie i najważniejsze pola. Wersja kontraktu jest stała `0.2`, a wersja transformacji jest osobnym oznaczeniem implementacji.
 
@@ -327,7 +370,7 @@ Dzień wyniku jest `metric_date`; dla rezerwacji dzień jej utworzenia. Końce o
 
 ### 7.6. `data_quality_daily`
 
-Źródła: `import_batches`, kontrola schematu i kluczy, błędy przetwarzania, źródłowe oczekiwane zbiory oraz oba rodzaje powiązań.
+Źródła: pola techniczne właściwych tabel, kontrole ich schematu i kluczy, jawnie ustalone oczekiwane zbiory oraz oba rodzaje powiązań. data_quality_daily zachowuje zagregowane fakty jakości metryk; nie jest logiem importów ani historią uruchomień.
 
 - Klucz/opis: `scope_key`, `metric_id`, `source_system`, `linkage_type`, `coverage_unit`, `coverage_status`, `linkage_coverage_status`, `quality_rule_id`, `quality_rule_version` — `STRING`.
 - Bazy: `expected_units`, `observed_units`, `eligible_outcomes`, `linked_outcomes`, `observation_count`, `duplicate_count`, `invalid_record_count`, `excluded_test_count` — `INT64?`.
@@ -338,27 +381,22 @@ Mianownik kompletności importu to oczekiwane konta-dni/kanały-dni zgodnie z za
 
 Procenty dzienne są wygodą diagnostyczną. Serwer liczy procent okresu z sum baz zgodnej jednostki; nie uśrednia procentów. `all_required` jest podsumowaniem jakości i nie powiększa mianownika źródeł. Pewność HIGH/MEDIUM/LOW/INSUFFICIENT_DATA powstaje później na serwerze z konfiguracją Supabase.
 
-## 8. Rejestry operacyjne, publikacja i anulacje
+## 8. Identyfikowalność v1, aktualizacja i anulacje
 
-### 8.1. Tabele `hma_ops`
+### 8.1. Rejestry operacyjne — poza v1
 
-| Tabela | Grain / klucz | Główne kolumny dodatkowe do OPS_META | Partycja / klaster |
-|---|---|---|---|
-| `import_batches` | Jedna logiczna partia źródła na hotel; PK hotel_id + batch_id | batch_id STRING, source_system STRING, source_scope_id STRING, source_locator STRING?, extraction_mode STRING, coverage_start DATE, coverage_end DATE, extracted_at TIMESTAMP, ingested_at TIMESTAMP, is_complete BOOL, received_rows INT64, expected_rows INT64?, checksum STRING, schema_version STRING, status STRING, reason_codes ARRAY<STRING> | DATE(ingested_at); hotel_id, source_system, batch_id |
-| `releases` | Jedna wersja kompletnej publikacji hotelu; PK hotel_id + release_id; maksymalnie jedna aktywna na hotel | release_id STRING, created_at TIMESTAMP, published_at TIMESTAMP?, as_of_at TIMESTAMP, status STRING, is_active BOOL, included_batch_ids ARRAY<STRING>, covered_start DATE, covered_end DATE, config_version STRING, contract_version STRING, transform_version STRING, validation_status STRING, failure_codes ARRAY<STRING> | Bez partycji w małym demo; hotel_id, release_id |
-| `rejected_records` | Jeden błąd kontroli rekordu/reguły; PK hotel_id + batch_id + raw_row_id + quality_rule_id + quality_rule_version | batch_id STRING, raw_row_id STRING, detected_at TIMESTAMP, source_system STRING, quality_rule_id STRING, quality_rule_version STRING, reason_code STRING, rejected_field STRING?, diagnostic_class STRING | DATE(detected_at); hotel_id, source_system, reason_code |
+**USTALONE:** rejestry operacyjne, historia uruchomień oraz osobne logi importów pozostają poza zakresem v1. Tabele import_batches, releases i rejected_records nie są częścią projektu v1 ani zawartości hma_core. Podstawową identyfikowalność zapewniają loaded_at, source_system, batch_id i is_synthetic w odpowiednich tabelach (sekcja 4.2).
 
-`source_locator` jest bezpiecznym identyfikatorem pochodzenia, bez tokenów dostępu. Kwarantanna wskazuje raw_row_id zamiast powielać dowolne dane wejściowe w logach. Mianowniki pokrycia per dzień są budowane w quality z zakresu oczekiwań oraz manifestów, a nie z `expected_rows=NULL` zamienionego na zero.
+Po wdrożeniu automatycznych importów, jeżeli pojawi się potrzeba rozbudowanego monitoringu, dataset **hma_ops może zostać dodany w przyszłości po osobnej decyzji architektonicznej**. Nie jest wymaganiem bieżącego wdrożenia. Historia zmian statusów rezerwacji jest historią faktów biznesowych Profitroom i pozostaje w zakresie; nie jest historią uruchomień.
 
-### 8.2. Codzienny przebieg — propozycja minimalna dla demo
+### 8.2. Aktualizacja danych bez osobnych logów
 
-1. Proces ustala hotel, zakres źródeł i jedną zatwierdzoną wersję konfiguracji Supabase. Tworzy logiczny batch z deterministycznym checksumem.
-2. Import dopisuje raw. Ponowienie tej samej partii jest idempotentne po hotel/batch/raw_row_id; nowa rewizja starego dnia jest nową obserwacją.
-3. Kontrole parsowania i pól wymaganych zapisują powody do kwarantanny; poprawne fakty trafiają do core. Błędy nie znikają z jakości.
-4. Rezerwacja aktualna jest wybierana według wiarygodnej rewizji źródła. Przy jej braku kolejność poprawnych pełnych ekstrakcji jest propozycją wymagającą potwierdzenia O02; sprzeczne dane tej samej rewizji wymagają wyjaśnienia.
-5. Dla małego demo proces przelicza całą zadeklarowaną historię do nowego `release_id` we wszystkich sześciu mart. Koszt prostoty jest jawny; ograniczona dzienna skala demo pozwala uniknąć komplikacji częściowych snapshotów.
-6. Po kontrolach publikacji jeden atomowy krok przełącza aktywną wersję hotelu. Nieudana przebudowa pozostawia poprzednią opublikowaną wersję z jej starą datą aktualizacji. Transakcje BigQuery pozwalają grupować operacje DML w atomowy przebieg; dokładny skrypt powstanie później. [Transakcje BigQuery](https://docs.cloud.google.com/bigquery/docs/transactions).
-7. Serwer odczytuje potrzebne widoki dla obu zakresów w jednym spójnym odczycie, np. pojedynczym zapytaniu lub transakcji odczytowej. Sześć niezależnych żądań wykonanych po obu stronach przełączenia publikacji wymaga ochrony przed mieszaniem wersji (O12).
+1. Właścicielka ręcznie uruchamia uzgodniony import z identyfikatorem partii i polami technicznymi zapisanymi przy rekordach.
+2. Kontrola powtórzeń wykorzystuje hotel, batch_id i klucz rekordu; rewizje źródła pozostają odróżnione od ponowienia tej samej partii.
+3. Czyszczenie i łączenie odbywa się w hma_core. Błędy skutkują odpowiednimi statusami jakości; brak wymaganych faktów blokuje zależny wynik. Podsumowania jakości nie wymagają osobnej tabeli kwarantanny lub historii błędów.
+4. Aktualny stan rezerwacji wynika z wiarygodnej rewizji Profitroom (O02); pola techniczne importu nie zastępują statusu biznesowego.
+5. Pomocnicze agregaty hma_core zachowują wersję logiki, konfiguracji i pochodzenie partii. Warunek spójnej aktualizacji sześciu zestawów oraz zachowania ostatnich poprawnych wyników pozostaje wymaganiem O12. Szczegółowy mechanizm bez rejestru publikacji będzie rozstrzygnięty przed implementacją agregatów w hma_core. O12 pozostaje świadomie odroczona i nie blokuje tworzenia tabel źródłowych ani danych syntetycznych.
+6. Serwer odczytuje jedną spójną wersję danych dla obu okresów. Daty aktualizacji są widoczne. loaded_at i obecność rekordów nie dowodzą pełnego pokrycia źródła; nieznana kompletność otrzymuje UNKNOWN.
 
 **Anulacja:** rezerwacja utworzona 10 lipca, anulowana 5 września, aktualizuje kohortę 10 lipca. Maleją active_bookings i active_booking_value, rośnie cancelled_bookings, a cohort_bookings pozostaje stałe. Jej wartość jest również usuwana z aktywnych powiązań, a wynik typu active_booking w ścieżkach jest aktualizowany. Sam historyczny purchase pozostaje zdarzeniem. Zmiana kanału, wartości lub daty utworzenia przebudowuje wszystkie dotknięte sumy.
 
@@ -450,8 +488,8 @@ Lista reason_codes jest propozycją implementacyjną; zestaw z kontraktu pozosta
 - Osobny projekt demo, wszystkie rekordy biznesowe `is_synthetic=true`. Produkcja ma odrębny projekt i tożsamości serwisowe.
 - `hotel_id` jest wymagany w każdym ziarnie, kluczu łączenia, cache i raporcie. Minimum dwa hotele syntetyczne umożliwią test przenikania danych, bez tworzenia ich w tym kroku.
 - Przeglądarka nie ma dostępu do Google Cloud. Serwer najpierw weryfikuje sesję i członkostwo w Supabase, a następnie wykonuje parametryzowane zapytanie z zatwierdzonym hotel_id i datami.
-- Tożsamość importu zapisuje raw/ops; tożsamość transformacji ma potrzebny odczyt/zapis core/mart/ops; tożsamość aplikacji ma `bigquery.jobs.create` w projekcie wykonania i odczyt wyłącznie zatwierdzonych widoków.
-- Proponowane authorized views w `hma_app` udostępniają dane z mart i stanu publikacji bez nadawania aplikacji odczytu tabel źródłowych. Tabele źródłowe i widoki są w uzgodnionej lokalizacji. [Odczyt widoków i uprawnienia](https://docs.cloud.google.com/bigquery/docs/querying-clustered-tables).
+- Tożsamość importu zapisuje cztery datasety źródeł z metadanymi przy rekordach; tożsamość transformacji ma potrzebny odczyt źródeł i zapis wybranych tabel hma_core; tożsamość aplikacji ma `bigquery.jobs.create` w projekcie wykonania i odczyt wyłącznie zatwierdzonych widoków.
+- Proponowane authorized views w `hma_app` udostępniają dane z zatwierdzonych agregatów hma_core bez nadawania aplikacji odczytu tabel źródłowych. Tabele źródłowe i widoki są w uzgodnionej lokalizacji. [Odczyt widoków i uprawnienia](https://docs.cloud.google.com/bigquery/docs/querying-clustered-tables).
 - Wszystkie filtrowania i nazwy widoków są kontrolowane przez serwer; parametry reprezentują wartości, a lista dopuszczonych struktur jest stała. Cache obejmuje hotel, obie daty, publikację, konfigurację i wersję reguł.
 
 **Istotna granica:** wspólne konto serwisowe z dostępem do widoków wielu hoteli widzi w BigQuery sumę swoich uprawnień. BigQuery nie zna automatycznie użytkownika Supabase. Współdzielone demo opiera izolację użytkowników na serwerowej autoryzacji i testach. Jeżeli wymagana jest osobna izolacja egzekwowana przez hurtownię, trzeba wybrać osobne tożsamości/tenant views lub polityki dostępu dla odpowiednich principal; sama klauzula `hotel_id` albo klastrowanie nie jest taką izolacją (O13). [Podejścia wielodostępne BigQuery](https://docs.cloud.google.com/bigquery/docs/best-practices-for-multi-tenant-workloads-on-bigquery).
@@ -491,11 +529,11 @@ Przed utworzeniem zasobów uzgadniamy sposób rozliczeń, budżet i limity, a pr
 | Profitroom i statusy | Raw revisions, bookings_current, hotel_sales_daily | Zgodne; próbka eksportu O02 |
 | Konfiguracja w Supabase | Odczyt procesu i serwera; BQ przechowuje odniesienia/rezultaty | Zgodne; polityka wersji O07 |
 | Dowolny zakres dat | metric_date, równoliczny poprzedni zakres, serwerowe ilorazy | Zgodne, bez ograniczenia do tygodnia |
-| Sześć płaskich widoków | Dokładne nazwy i pełne kolumny N.1–N.7 kontraktu | Zachowane; pola core/ops są technicznym rozwinięciem |
+| Sześć płaskich widoków | Dokładne nazwy i pełne kolumny N.1–N.7 kontraktu | Zachowane; pola techniczne tabel źródłowych i core są rozwinięciem |
 | Dwa poziomy łączenia | purchase_booking_links, evidence, booking_marketing_links | Zgodne; szczegóły kwalifikacji O03 |
 | Pięć warunków linked ROAS | Bazy i kontrola techniczna, finalna bramka serwera | Doprecyzowanie granicy statusu O11 |
 | Journey i okno 30 dni | Jawne kohorty i wyniki, aktualizacja historycznych dni | Definicja lifecycle i wielu wyników O05 blokuje finalną agregację tej części |
-| NULL, zero i UNKNOWN | Manifest importu, quality per KPI, serwerowa ocena | Zgodne; mianowniki i hierarchia O08/O11 |
+| NULL, zero i UNKNOWN | Metadane tabel, quality per KPI, serwerowa ocena | Zgodne; mianowniki i hierarchia O08/O11 |
 | AI z gotowymi faktami | Wyniki serwera z referencjami, bez tabel narracji | Zgodne; integracja jest późniejszym zadaniem |
 | Syntetyczne dane | Osobny projekt, is_synthetic, scenariusze z dwoma hotelami | Zgodne; treść scenariusza O09 |
 
@@ -503,21 +541,21 @@ Przed utworzeniem zasobów uzgadniamy sposób rozliczeń, budżet i limity, a pr
 
 ## 13. Kolejność późniejszego wdrożenia
 
-Pełna architektura pozostaje zachowana: 25 tabel fizycznych i sześć widoków. **Struktury będą powstawać etapami, a nie jednocześnie.** Każdy etap wymaga kontroli wyniku przed przejściem dalej. Codex przygotowuje lokalne materiały po osobnym zleceniu; wszystkie wykonania chmurowe poniżej realizuje ręcznie właścicielka zgodnie z sekcją 11.3. Krok 4.1 kończy się na dokumencie.
+Aktualna architektura obejmuje sześć datasetów. Struktury pomocnicze zachowują swoje role wewnątrz hma_core; opcjonalne wejścia wymagają potwierdzenia przed utworzeniem. **Struktury będą powstawać etapami, a nie jednocześnie.** Każdy etap wymaga kontroli wyniku przed przejściem dalej. Codex przygotowuje lokalne materiały po osobnym zleceniu; wszystkie wykonania chmurowe poniżej realizuje ręcznie właścicielka zgodnie z sekcją 11.3. Krok 4.1 kończy się na dokumencie.
 
-Przed A uzgadniamy sposób rozliczeń, budżet i limity; B obejmuje ich ustawienie lub potwierdzenie dostępnych zabezpieczeń w wybranym trybie. Przed każdym poleceniem obowiązuje kontrola projektu, EU, zakresu oraz skutku i kosztu.
+A oraz utworzenie datasetów z C zostały zgłoszone przez właścicielkę jako wykonane; pola checklisty pozostają kontrolami odbioru, bez ponownego tworzenia istniejących zasobów. Lokalizacja EU jest zgłoszona jako ustawiona. Stan rozliczeń, budżetu, limitów i uprawnień wymaga potwierdzenia przed dalszymi operacjami. Przed każdym poleceniem obowiązuje kontrola projektu, EU, zakresu oraz skutku i kosztu.
 
 | Stan / etap | Co dokładnie powstaje | Kto wykonuje operację | Kontrola przed przejściem dalej | Warunek STOP | Czy może generować koszt? |
 |---|---|---|---|---|---|
-| [ ] A. Osobny projekt | Nowy projekt demo z wybranym finalnym project_id | Właścicielka ręcznie | Nowe ID, odrębność od creatic-503805, właściciel projektu, uzgodniony tryb rozliczeń | Wybrany istniejący projekt klientów, błędne ID lub brak ustaleń finansowych | Sam pusty projekt nie przetwarza danych; podłączenie płatnych usług otwiera możliwość kosztów |
+| [ ] A. Osobny projekt | Odbiór istniejącego projektu hotel-marketing-analyzer-demo | Właścicielka ręcznie | Nowe ID, odrębność od creatic-503805, właściciel projektu, uzgodniony tryb rozliczeń | Wybrany istniejący projekt klientów, błędne ID lub brak ustaleń finansowych | Sam pusty projekt nie przetwarza danych; podłączenie płatnych usług otwiera możliwość kosztów |
 | [ ] B. EU i ochrona kosztów | Zatwierdzenie EU dla wszystkich datasetów i zadań; konfiguracja rozliczeń albo sandboxa, budżetu, dostępnych alertów i limitów | Właścicielka ręcznie | Faktyczny zakres limitów, odbiorcy alertów, ograniczenia sandboxa; lokalizacja jest własnością datasetów, nie całego projektu | Inna lokalizacja, nieznane ograniczenia lub traktowanie alertu jako twardego limitu | Konfiguracja nie skanuje danych; płatny tryb pozwala naliczać opłaty za późniejsze użycie |
-| [ ] C. Puste datasety | hma_ops, hma_raw, hma_core, hma_mart, hma_app — bez tabel i danych | Właścicielka ręcznie, z kontrolą każdego datasetu | Każdy dataset w nowym projekcie i EU, właściwy dostęp, brak danych | Błędny projekt, lokalizacja lub niezamierzony dostęp | Puste datasety nie generują skanowania ani przechowywania danych użytkowych |
-| [ ] D. Tabele ops | import_batches, releases, rejected_records | Właścicielka ręcznie, pojedynczo | Zgodność schematów, kluczy i partycji z sekcją 8; tabele puste | Rozbieżny schemat, niezamierzony zapis danych lub nadpisanie istniejącej struktury | Puste definicje bez skanowania; późniejsze zapisy i odczyty mogą kosztować |
-| [ ] E. Tabele raw | Sześć tabel z sekcji 5, każda osobno | Właścicielka ręcznie, jedna tabela na wykonanie | Źródło, grain, typy, metadane, partycje, syntetyczność; odbiór każdej tabeli | Brak decyzji o wymaganym schemacie, odwołanie do realnych danych lub niewłaściwe ID | Puste definicje bez skanowania; koszt danych dopiero przy późniejszym użyciu |
-| [ ] F. Odpowiadające tabele core | Dziesięć struktur sekcji 6 w kolejności zależności od gotowych raw i innych core | Właścicielka ręcznie, pojedynczo | Klucze hotelu, deduplikacja, daty, NULL; rozstrzygnięte wymagane O02–O05/O07/O11 | Brak zależności lub decyzji potrzebnej danej strukturze | Puste definicje bez skanowania; transformacje z danymi mogą kosztować |
-| [ ] G. Tabele mart | Sześć tabel daily_store z sekcji 7 | Właścicielka ręcznie, pojedynczo | Grain, release_id, liczniki i mianowniki, zgodność kontraktu, gotowe zależności | Nieaddytywne bazy potraktowane jako sumowalne, brak metadanych jakości lub zależności | Puste definicje bez skanowania; późniejsza agregacja i przechowywanie mogą kosztować |
+| [ ] C. Puste datasety | ga4, meta_ads, google_ads, profitroom, hma_core, hma_app — odbiór zgłoszonych datasetów; stan tabel i danych wymaga osobnego potwierdzenia | Właścicielka ręcznie, z kontrolą każdego datasetu | Każdy dataset w nowym projekcie i EU, właściwy dostęp, brak danych | Błędny projekt, lokalizacja lub niezamierzony dostęp | Puste datasety nie generują skanowania ani przechowywania danych użytkowych |
+| [ ] D. Pola techniczne | loaded_at, source_system, batch_id, is_synthetic we właściwych projektach tabel; bez osobnych rejestrów | Codex przygotowuje opis/definicje po zleceniu; właścicielka ręcznie wykonuje późniejsze DDL wraz z tabelami | Typy, znaczenie partii i zgodność źródła | Brak identyfikowalności lub próba dodania rejestrów operacyjnych do v1 | Sama dokumentacja bez kosztu chmury; późniejsze przechowywanie metadanych może kosztować |
+| [ ] E. Tabele raw | Źródła z sekcji 5 w odpowiednich datasetach, najpierw ga4.events_demo; marketing_observations powstaje w core | Właścicielka ręcznie, jedna tabela na wykonanie | Źródło, grain, typy, metadane, partycje, syntetyczność; odbiór każdej tabeli | Brak decyzji o wymaganym schemacie, odwołanie do realnych danych lub niewłaściwe ID | Puste definicje bez skanowania; koszt danych dopiero przy późniejszym użyciu |
+| [ ] F. Odpowiadające tabele core | Dziesięć struktur sekcji 6 oraz marketing_observations z sekcji 5.6 w kolejności zależności od gotowych raw i innych core | Właścicielka ręcznie, pojedynczo | Klucze hotelu, deduplikacja, daty, NULL; rozstrzygnięte wymagane O02–O05/O07/O11 | Brak zależności lub decyzji potrzebnej danej strukturze | Puste definicje bez skanowania; transformacje z danymi mogą kosztować |
+| [ ] G. Tabele mart | Sześć tabel daily_store w hma_core z sekcji 7 | Właścicielka ręcznie, pojedynczo | Grain, release_id, liczniki i mianowniki, zgodność kontraktu, gotowe zależności | Nieaddytywne bazy potraktowane jako sumowalne, brak metadanych jakości lub zależności | Puste definicje bez skanowania; późniejsza agregacja i przechowywanie mogą kosztować |
 | [ ] H. Widoki app | Sześć widoków daily nad mart i stanem publikacji; wymagane jawne uprawnienia | Właścicielka ręcznie, pojedynczo | Nazwy i kolumny kontraktu, wybór publikacji, zakres hotelu, tylko zatwierdzone zależności | Dostęp do raw przez aplikację, niewłaściwy projekt lub niespójna publikacja | Sama definicja widoku nie materializuje danych; odczyt/walidacja zapytaniem może kosztować |
-| [ ] I. Dane syntetyczne | Zatwierdzony scenariusz co najmniej dwóch hoteli w raw/ops oraz wyniki ręcznie uruchomionych transformacji core/mart i publikacja | Właścicielka ręcznie, kontrolowanymi partiami | O09, is_synthetic, scenario_id, generator_version, liczby kontrolne, estymacja kosztu każdego zadania | Dane rzeczywiste, niejawna semantyka, naruszenie izolacji, brak estymacji/limitu albo niezgodne sumy | Tak: zależnie od trybu importu, transformacji, skanowania i przechowywania; sandbox ma ograniczenia |
+| [ ] I. Dane syntetyczne | Zatwierdzony scenariusz co najmniej dwóch hoteli w datasetach źródłowych z polami technicznymi oraz wyniki ręcznie uruchomionych transformacji core/mart i publikacja | Właścicielka ręcznie, kontrolowanymi partiami | O09, is_synthetic, scenario_id, generator_version, liczby kontrolne, estymacja kosztu każdego zadania | Dane rzeczywiste, niejawna semantyka, naruszenie izolacji, brak estymacji/limitu albo niezgodne sumy | Tak: zależnie od trybu importu, transformacji, skanowania i przechowywania; sandbox ma ograniczenia |
 | [ ] J. Testy | Wyniki kontroli obliczeń, izolacji hoteli i zgodności kontraktu; bez podłączania aplikacji w tym kroku | Właścicielka uruchamia testy chmurowe ręcznie; Codex może przygotować i uruchamiać zlecone testy lokalne bez dostępu do chmury | Zera/NULL, anulacje, pięć warunków linked ROAS, dowolne daty, brak mnożenia kwot, publikacja i separacja hotel_id/uprawnień | Błąd merytoryczny, przeciek hotelu, koszt poza limitem lub brak decyzji blokującej test | Tak dla zapytań i zapisywanych wyników; lokalne testy bez połączenia nie generują kosztu Google Cloud |
 
 Warunek STOP w jednej zależnej części oznacza jej wstrzymanie do wyjaśnienia; nie jest zgodą na zgadywanie ani usuwanie jej z architektury. Testy endpointów i cache zostaną uzupełnione w osobnym etapie aplikacyjnym, gdy powstanie adapter. Integracja Next.js, reguły, AI, aktualizacje dashboardu i wdrożenia pozostają późniejszymi zadaniami.
@@ -528,7 +566,7 @@ Oznaczenia Q odnoszą się do zaakceptowanego kontraktu. Pytania techniczne nie 
 
 | ID | Otwarte pytanie | Ryzyko i sposób zachowania do rozstrzygnięcia | Moment decyzji |
 |---|---|---|---|
-| O01 | **CZĘŚCIOWO ROZSTRZYGNIĘTE:** demo będzie osobnym projektem; rekomendowana lokalizacja ustalona na EU. Finalny project_id wybierze właścicielka podczas ręcznego tworzenia. Sposób rozliczeń (konto albo sandbox), budżet, alerty i limity kosztów pozostają do ustalenia. | Zgodna lokalizacja nie nadaje dostępu do innych projektów; ochrona kosztów wymaga jawnych zabezpieczeń, a sam alert nie zatrzymuje wydatków | Ustalenia finansowe przed utworzeniem zasobów; ID przy ręcznym tworzeniu, kontrola zabezpieczeń przed zapytaniami |
+| O01 | **CZĘŚCIOWO ROZSTRZYGNIĘTE:** Właścicielka potwierdziła utworzenie osobnego projektu hotel-marketing-analyzer-demo oraz sześciu datasetów w EU. Sposób rozliczeń (konto albo sandbox), budżet, alerty i limity kosztów pozostają do ustalenia. | Zgodna lokalizacja nie nadaje dostępu do innych projektów; ochrona kosztów wymaga jawnych zabezpieczeń, a sam alert nie zatrzymuje wydatków | Potwierdzenie zabezpieczeń finansowych przed dalszymi operacjami i zapytaniami |
 | O02 | Jak wygląda faktyczna próbka Profitroom, stabilne ID, statusy, wartości, kanały, czas rewizji oraz tryb pełny/delta/usunięcia? Gdzie dostępne jest mapowanie transaction? | Błędne anulacje, latest-state i zakres „całej sprzedaży”; niejednoznaczne rekordy wymagają jakości | Przed adapterem sprzedaży; kontrakt D01/D03 |
 | O03 | Które kampanie/koszty są eligible, jak traktujemy podatki i korekty? Jaka akcja zakupowa i polityka platformy obowiązuje? Jaki dowód płatny i zakres kosztu kwalifikuje linked ROAS? | Ukryta zmiana mianownika lub uznanie identity za paid; dependent KPI pozostają NULL | Przed kwalifikacją, Q01/Q02 |
 | O04 | O której aktualizujemy dane, jaki jest cutoff pełnych dni i źródłowe strefy? Jak obsłużyć dzienne raporty w innej strefie? | Porównanie różnych dni, opóźnienie; date_basis i aktualność pozostają jawne | Przed harmonogramem, Q03 |
@@ -539,7 +577,7 @@ Oznaczenia Q odnoszą się do zaakceptowanego kontraktu. Pytania techniczne nie 
 | O09 | Jakie syntetyczne dni, kampanie, statusy i połączenia utworzymy? Które dawne sumy i semantyki zachowamy? | Nadanie starym package_bookings/booking_value fikcyjnej atrybucji; nowy scenariusz jest jawny | Przed generatorami i seedem, Q08 |
 | O10 | Czy dostępny będzie kompletny zbiór indywidualnych kwalifikujących kliknięć i wiarygodne wejścia, czy tylko agregaty? | Selekcja tylko kliknięć z wizytą zawyży dotarcie; click_arrival_rate pozostaje NULL, sessions_per_click osobno | Przed metryką dotarcia |
 | O11 | Czy akceptujemy rozdzielenie technicznego dziennego statusu i finalnej bramki KPI na serwerze oraz hierarchię reason/status? | Progi zależne od zakresu mogłyby być oceniane na pojedynczych dniach; status dzienny nie jest końcową oceną okresu | Przed SQL mart i adapterem statusów |
-| O12 | Jaki zakres historii, retencję publikacji i limit pełnej przebudowy demo przyjmujemy? Jak serwer zapewni jeden spójny odczyt publikacji? | Mieszanie wersji, koszt pełnych rebuildów, brak reakcji na stare anulacje; aktywna ostatnia poprawna publikacja pozostaje dostępna | Przed publikacją i skalowaniem |
+| O12 | **ŚWIADOMIE ODROCZONA:** jaki zakres historii, retencję publikacji i limit pełnej przebudowy demo przyjmujemy? Jak bez osobnych rejestrów zapewnimy spójną aktualizację i odczyt sześciu zestawów, zachowanie ostatniej poprawnej wersji i ewentualną retencję historycznych agregatów? | Mieszanie wersji, koszt pełnych rebuildów, brak reakcji na stare anulacje; aktywna ostatnia poprawna publikacja pozostaje dostępna | Przed implementacją agregatów w hma_core. O12 nie blokuje tworzenia tabel źródłowych ani danych syntetycznych |
 | O13 | Czy serwerowa izolacja współdzielonego demo wystarcza, a przed produkcją jaki model egzekwowania izolacji w BigQuery i uwierzytelnienia serwera wybieramy? | Wspólne konto serwisowe nie rozróżnia użytkowników Supabase; wymagane testy uprawnień i świadoma granica | Przed IAM i rzeczywistymi hotelami |
 | O14 | Jak transportujemy NUMERIC/INT64, ograniczamy koszt zapytań i wybieramy model/format AI, logi oraz walidację odpowiedzi? | Utrata dokładności, rozbieżne liczby i koszt; brak obliczeń w AI, jawny adapter liczb | Adapter w osobnym etapie; AI według Q09 |
 
@@ -552,9 +590,9 @@ Poniższe kryteria rozróżniają akceptację projektu od przyszłej realizacji 
 - [ ] Cały Etap 4 zachowuje ręczne wykonanie chmurowe przez właścicielkę; Codex przygotowuje materiały bez dostępu do Google Cloud.
 - [ ] Datasety demo powstają w osobnym projekcie i EU; rozliczenia, budżet i dostępne limity są uzgodnione, a każde zapytanie ma sprawdzony koszt i zakres.
 - [ ] Checklista A–J jest realizowana etapami, z kontrolą wyniku i warunkami STOP.
-- [x] Właścicielka zaakceptowała granice datasetów, osobny projekt demonstracyjny, lokalizację EU, zasadę ręcznego wdrażania oraz aktualny stan decyzji O01–O14.
+- [x] Właścicielka zaakceptowała wersję 0.3: sześć datasetów, role pomocnicze hma_core, projekt ga4.events_demo, ręczne wdrażanie oraz aktualny stan O01–O14.
 - [ ] Sześć app views zachowuje wszystkie pola, grain i NULL z kontraktu 0.2; dodatkowe struktury są wyłącznie technicznym zapleczem.
-- [ ] Każdy raw/core/mart/ops ma klucz, typ, hotel, partycję lub uzasadniony jej brak, wersję i źródło.
+- [ ] Każda tabela źródłowa, oczyszczona, łącząca i agregująca ma klucz, typ, hotel, partycję lub uzasadniony jej brak, wersję i źródło.
 - [ ] O02–O05 oraz O07/O11 są rozstrzygnięte przed implementacją zależnych części; brak decyzji jest widoczny jako ograniczenie, nie losowe założenie.
 - [ ] Ponowny import tego samego batcha nie zmienia sum; kolejna rewizja ma pierwszeństwo zgodne z ustalonym porządkiem źródła.
 - [ ] Anulacja starej rezerwacji aktualizuje historyczne active, cancelled, wartość i aktywne powiązania, zachowując kohortę utworzenia.
@@ -571,4 +609,4 @@ Poniższe kryteria rozróżniają akceptację projektu od przyszłej realizacji 
 - [ ] Późniejsze dry-runy mierzą skanowane bajty i działanie filtrów partycji; prognoza kosztu mieści się w zatwierdzonym budżecie.
 - [ ] NUMERIC i INT64 zachowują dokładność na granicy aplikacji; każdy końcowy KPI ma referencję hotel/okres/metryka/publikacja/konfiguracja.
 
-Krok 4.1 został zaakceptowany. Dokument stanowi podstawę ręcznego wdrażania architektury BigQuery w kolejnych krokach Etapu 4. Nie utworzono jeszcze żadnych zasobów Google Cloud.
+Wersja 0.3 została zaakceptowana jako architektura BigQuery v1 po zmianie datasetów. Według informacji właścicielki projekt i sześć datasetów w EU są już utworzone ręcznie. Niniejsza aktualizacja dotyczy wyłącznie dokumentacji; Codex nie wykonywał operacji w Google Cloud, nie tworzył tabel, danych ani SQL.
