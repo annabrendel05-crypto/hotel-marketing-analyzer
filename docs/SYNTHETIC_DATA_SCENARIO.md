@@ -1,10 +1,10 @@
 # Projekt spójnych danych syntetycznych — Hotel Marketing Analyzer
 
-Status: **0.2 — zaakceptowany scenariusz danych syntetycznych v1**. Data: 2026-09-09.
+Status: **0.3 — zaakceptowany scenariusz danych syntetycznych po kalibracji wszystkich źródeł**. Data: 2026-09-09.
 
 Podstawa: [ANALYTICS_CONTRACT.md 0.2](ANALYTICS_CONTRACT.md), [BIGQUERY_DESIGN.md 0.4](BIGQUERY_DESIGN.md) oraz [DDL ga4.events_demo](../bigquery/ddl/001_create_ga4_events_demo.sql). Dokument projektuje wspólny scenariusz, bez generatora, SQL, rekordów i operacji chmurowych.
 
-**USTALONE:** Hotel Baltic Horizon Demo, hotel_id `hotel_demo_001`, premium nad polskim morzem, dokładnie 90 kolejnych dni, PLN, Europe/Warsaw, GA4 WEB, wyłącznie dane syntetyczne i powtarzalne. **USTALONE DLA DEMO:** poniższe zasady czasu, liczebności GA4, bilans Profitroom, identyfikatory i kontrolowane braki są podstawą generatora GA4. Pozostałe decyzje wdrożeniowe mają terminy w sekcji 10; nie blokują tego generatora. Wartości demo nie stanowią progów ani benchmarków produkcyjnych.
+**USTALONE:** Hotel Baltic Horizon Demo, hotel_id `hotel_demo_001`, premium nad polskim morzem, dokładnie 90 kolejnych dni, PLN, Europe/Warsaw, GA4 WEB, wyłącznie dane syntetyczne i powtarzalne. **KALIBRACJA 0.3:** aktualne referencje i orientacyjne cele znajdują się w sekcjach 3.1–5. Dokładne liczebności, model powiązań i zależne KPI wymagają ponownego uzgodnienia przed generatorem; decyzje opisuje sekcja 10. Wartości demo nie stanowią progów ani benchmarków produkcyjnych.
 
 ## 1. Profil hotelu i stały czas
 
@@ -19,7 +19,7 @@ Fikcyjny obiekt: 80 pokoi i apartamentów, strefa wellness, restauracja, oferta 
 | Pobyt wellness | 3 noce, 2700–4200 PLN |
 | Apartament premium | 3–5 nocy, 4500–9000 PLN |
 
-Wartości uwzględniają elementy zawarte w syntetycznej rezerwacji Profitroom. Prowizje OTA i przychód zrealizowany pozostają poza zakresem. Rozkład będzie zawierał różne kwoty, a sumy kontrolne poniżej mają średnią 4000 PLN na aktywną rezerwację; nie oznacza to identycznej ceny każdej rezerwacji.
+Wartości uwzględniają elementy zawarte w syntetycznej rezerwacji Profitroom. Prowizje OTA i przychód zrealizowany pozostają poza zakresem. Rozkład będzie zawierał różne kwoty, a dawny model średniej 4000 PLN jest historyczną bazą wymagającą ponownego uzgodnienia po finalizacji kalibracji źródeł. Aktualna referencja wartości nieanulowanych jest w sekcji 5; rozkład cen i udział typów pobytu wymagają uzgodnienia z tą skalą.
 
 Końcowy punkt stanu: `as_of_at = 2026-08-30T06:00:00Z` (08:00 lokalnie). Obowiązujące ładowanie: dzień po dacie źródłowej o 06:00 UTC; końcowa aktualizacja stanu Profitroom obejmuje znane wtedy anulacje. as_of_at to dokładnie 30 sierpnia 2026, 08:00 Europe/Warsaw. Loaded_at jest deterministycznym czasem scenariusza, a nie zegarem komputera wykonującego generator. Importy są identyfikowalne polami tabel; osobne logi i rejestry uruchomień pozostają poza v1.
 
@@ -45,23 +45,25 @@ Osobny eksport Booking Engine pozostaje opcjonalny i nie jest potrzebny do tego 
 | Konto Meta / Google | `demo_meta_account_001` / `demo_google_account_001` |
 | Kampanie | `demo_meta_discovery_001`, `demo_meta_packages_002`, `demo_google_brand_001`, `demo_google_general_002` |
 | Grupy reklam Google | `demo_google_brand_group_001`, `demo_google_general_group_001` |
-| user_pseudo_id | `demo_browser_000001`…`demo_browser_012000`; NULL w zaprojektowanych brakach |
+| user_pseudo_id | Syntetyczny prefiks `demo_browser_`; liczba urządzeń i braki identyfikatorów do uzgodnienia; dawny limit 12000 jest historyczny |
 | Identyfikator sesji | ga_session_id jako INT64 w event_params; łączony z hotel_id, stream_id i user_pseudo_id |
 | demo_event_id / raw_row_id | Deterministyczny identyfikator eventu / pozycji partii, bez zależności od rzeczywistego czasu wykonania |
-| booking_id | `demo_booking_000001`…`demo_booking_000600`; mapowany do source_booking_id w planowanej tabeli Profitroom |
+| booking_id | Syntetyczny prefiks `demo_booking_`; mapowany do source_booking_id; dawny limit 600 jest historyczny, dokładny zakres do uzgodnienia |
 | transaction_id | `demo_tx_000001`…; przestrzeń transakcji demo dla hotelu, odrębna od booking_id |
 | batch_id | `baltic_horizon_2026_v1:<source_system>:<data>:<rewizja>` |
 | Adresy | Wyłącznie wygenerowane ścieżki pod `https://baltic-horizon.example/`, np. /oferty/rodzinne |
 
 Nazwy kont, kampanii, grup, źródeł i mapy identyfikatorów są wspólne dla odpowiadających sobie rekordów. Wszystkie połączenia zawierają hotel_id; nazwa kampanii, kwota i timestamp nie są kluczem tożsamości.
 
-**USTALONE:** generator stosuje `hotel_demo_001` jako STRING. Mapowanie do przyszłego UUID/członkostwa Supabase jest odłożone do integracji aplikacji (S02); drugi hotel powstanie jako osobny zestaw do testów izolacji. Żadna z tych czynności nie blokuje GA4.
+**USTALONE:** generator stosuje `hotel_demo_001` jako STRING. Mapowanie do przyszłego UUID/członkostwa Supabase jest odłożone do integracji aplikacji (S02); drugi hotel powstanie jako osobny zestaw do testów izolacji. Te czynności są odrębne od ponownego uzgodnienia liczebności i linkowania przed generatorem GA4.
 
 Generator powstanie później według stałego algorytmu, ziarna, posortowanych kluczy i kwot w groszach. Ponowne wygenerowanie tej samej wersji daje te same ID, czasy i sumy. Scenariusz biznesowy jest wspólny, następnie każde źródło otrzymuje własny zakres obserwacji. Wiedza generatora o zdarzeniach niewidocznych dla pomiaru służy wyłącznie oczekiwanym wynikom testów — nie jest dowodem dostępnym aplikacji.
 
 ## 3. Kampanie i raporty reklamowe
 
-**USTALONE DLA DEMO:** cztery kampanie są aktywne od 1 czerwca do 29 sierpnia. Identyfikatory pozostają stabilne mimo doprecyzowania nazw ról. Wszystkie kierują do oferty/Booking Engine tego hotelu i należą do demonstracyjnego zakresu kosztów; podatki, korekty i dodatkowe opłaty są poza bazowym scenariuszem.
+**Baza historyczna 0.2:** poniższe liczby reklamowe i model czterech kampanii są historyczne; aktualne cele i role Meta oraz Google określają sekcje 3.1–3.2. Aktualną kalibrację GA4 i Profitroom opisują sekcje 4–5.
+
+**HISTORYCZNA BAZA 0.2:** cztery kampanie są aktywne od 1 czerwca do 29 sierpnia. Identyfikatory pozostają stabilne mimo doprecyzowania nazw ról. Wszystkie kierują do oferty/Booking Engine tego hotelu i należą do demonstracyjnego zakresu kosztów; podatki, korekty i dodatkowe opłaty są poza bazowym scenariuszem.
 
 | ID kampanii (skrót z sekcji 2) | Rola / nazwa fikcyjna | Kliknięcia | Wydatek PLN |
 |---|---|---:|---:|
@@ -74,235 +76,272 @@ Generator powstanie później według stałego algorytmu, ziarna, posortowanych 
 
 Wyświetlenia kontrolne: Meta 1200000 (900000 + 300000), Google 120000 (40000 brand + 80000 non-brand). Każda kampania zachowuje jeden koszt delivery na dzień. Wynik platformowy ma oddzielną akcję i własne okno/model; ich dokładna specyfikacja powstanie przy tabelach Meta i Google (S04).
 
-**Korekta spójności:** wcześniejsze liczby konwersji platformowych, ich wartości oraz założenie liczby wspólnych zakupów zostały zastąpione odroczeniem tych danych do S04. Dawna liczba różnych zakupów przewyższała nowy zbiór Booking Engine. Nowy rozkład ma wynikać ze wspólnej syntetycznej historii, ze wskazaniem zakupów zaliczanych przez obie platformy, daty raportowania i okna. Każda platforma zachowuje odrębny raport. To nie zmienia 65 purchase GA4 ani nie wymaga dopisywania zdarzeń GA4, by uzyskać wynik reklamowy.
+**Korekta spójności:** wcześniejsze liczby konwersji platformowych, ich wartości oraz założenie liczby wspólnych zakupów zostały zastąpione odroczeniem tych danych do S04. Dawna liczba różnych zakupów przewyższała nowy zbiór Booking Engine. Nowy rozkład ma wynikać ze wspólnej syntetycznej historii, ze wskazaniem zakupów zaliczanych przez obie platformy, daty raportowania i okna. Każda platforma zachowuje odrębny raport. Dawne 65 purchase GA4 jest historyczne. Licznik platformowy pozostaje odrębny od obserwacji GA4.
 
-`eligible_ad_spend=60000 PLN` w demonstracyjnym zakresie czterech kampanii. Produkcyjna kwalifikacja Q01/O03 oraz implementacja konfiguracji Supabase pozostają odrębnymi zadaniami.
+**Historyczna baza:** `eligible_ad_spend=60000 PLN` dla dawnych czterech kampanii wymaga ponownego uzgodnienia. Produkcyjna kwalifikacja Q01/O03 oraz implementacja konfiguracji Supabase pozostają odrębnymi zadaniami.
 
-## 4. GA4 — liczebności i konstrukcja ścieżek
+### 3.1. Kalibracja Meta Ads — zagregowane dane referencyjne
 
-### 4.1. Jednostki, urządzenia i zgody
+**Kalibracja Meta zakończona na poziomie agregatów; scenariusz 0.3 został zaakceptowany po kalibracji wszystkich źródeł.** Źródłem są przekazane przez właścicielkę zagregowane wyniki hotelu My Story Sopot za **29.08–07.09.2026 włącznie (10 dni)**. Nazwa wskazuje wyłącznie pochodzenie referencji w dokumentacji. Demo nadal przedstawia Hotel Baltic Horizon Demo i zawiera wyłącznie całkowicie syntetyczne rekordy, identyfikatory kont, kampanii, zestawów reklam i reklam, nazwy oraz kreacje. Z rzeczywistego hotelu korzystamy tylko ze skali, proporcji i zakresów zmienności; jego rekordy i wymienione elementy pozostają poza danymi demonstracyjnymi.
 
-| Wielkość | Ustalona liczba |
+Demo obejmuje ustalone 90 dni i hotel około dwa razy większy. Orientacyjny mnożnik sum wynosi **90 / 10 × 2 = 18**: dziewięciokrotnie dłuższy okres i około dwukrotna skala dzienna. To założenie scenariusza, nie prognoza wyników hotelu. Przyszły generator zachowuje proporcje i nieregularne wahania między dniami, tworząc nową, powtarzalną historię syntetyczną zamiast kopiować każdy dzień dokładnie 18 razy. Daty referencji są odrębne od zakresu demo 1 czerwca–29 sierpnia 2026.
+
+| Metryka | Referencja: 10 dni | Cel demo: 90 dni ×2 |
+|---|---:|---:|
+| Wydatki | 1 719,52 PLN | około 30 951,36 PLN |
+| Wyświetlenia | 102 421 | około 1 843 578 |
+| Wszystkie kliknięcia | 5 469 | około 98 442 |
+| Kliknięcia linku | 2 032 | około 36 576 |
+| Wyświetlenia strony docelowej | 1 822 | około 32 796 |
+| Search / wejścia do silnika | 939 | około 16 902 |
+| Dodania do koszyka | 25 | około 450 |
+| Rozpoczęcia finalizacji | 4 | około 72 |
+| Zakupy raportowane przez Meta | 1 | około 18 |
+| Wartość zakupów raportowana przez Meta | 1 556 PLN | około 28 008 PLN |
+
+Cele są orientacyjne; dokładne sumy i rozkład na dwie syntetyczne kampanie oraz dni zostaną uzgodnione przed generatorem Meta. Liczniki oznaczają działania raportowane przez platformę, a nie unikalnych użytkowników, sesje GA4 ani kanoniczne rezerwacje.
+
+#### Wskaźniki referencyjne
+
+Wskaźniki wynikają z ilorazów sum za całe 10 dni, a nie ze średniej dziennych wskaźników.
+
+| Wskaźnik | Wzór na agregatach referencyjnych | Wynik przybliżony |
+|---|---|---:|
+| CTR kliknięć linku | 2 032 / 102 421 × 100% | 1,98% |
+| Koszt kliknięcia linku | 1 719,52 / 2 032 | 0,85 PLN |
+| CPM | 1 719,52 / 102 421 × 1 000 | 16,79 PLN |
+| Wyświetlenie strony docelowej / kliknięcie linku | 1 822 / 2 032 × 100% | 89,67% |
+| Search / wyświetlenie strony docelowej | 939 / 1 822 × 100% | 51,54% |
+| Koszt jednego Search | 1 719,52 / 939 | 1,83 PLN |
+| Koszt rozpoczęcia finalizacji | 1 719,52 / 4 | 429,88 PLN |
+| Platformowy ROAS Meta | 1 556 / 1 719,52 | 0,90 |
+
+Jeden zakup w krótkim okresie daje ograniczoną podstawę do oceny skuteczności. Wskaźniki służą kalibracji, a ocena kampanii uwzględnia wielkość próby, jakość oraz skonfigurowane progi. Iloraz wyświetleń strony docelowej do kliknięć linku opisuje agregaty Meta; potwierdzone dotarcie pojedynczego kliknięcia wymaga osobnych dowodów zgodnie z kontraktem.
+
+#### Dzienne zakresy referencyjne
+
+| Metryka | Zakres w jednym dniu referencji |
 |---|---:|
-| Obserwowalne unikalne user_pseudo_id | 12000 |
-| Sesje z kompletnym kluczem urządzenie + sesja | 18000 |
-| Sesje mobile / desktop | 12600 / 5400 |
-| Identyfikatory mobile / desktop | 8400 / 3600 |
-| Sesje z syntetycznym analytics_storage=Yes, ads_storage=Yes | 15000 |
-| Sesje analytics_storage=Yes, ads_storage=No | 3000 |
-| Dodatkowe page_view z analytics_storage=No i user_pseudo_id=NULL | 1200 |
-| Dodatkowe page_view z nieznanym stanem zgody i user_pseudo_id=NULL | 300 |
-| Wizyty bez żadnego eventu w GA4 — tylko wiedza scenariusza | 2500 |
+| Wydatki | 104,40–199,81 PLN |
+| Wyświetlenia | 6 408–14 350 |
+| Kliknięcia linku | 144–252 |
+| Wyświetlenia strony docelowej | 133–238 |
+| Search | 52–146 |
+| Dodania do koszyka | 0–5 |
+| Rozpoczęcia finalizacji | 0–2 |
+| Zakup raportowany przez Meta | Wystąpił tylko jednego dnia |
 
-Podział liczby sesji użytkownika: 8000 identyfikatorów ma jedną sesję, 2000 ma dwie, 2000 ma trzy: 8000 + 4000 + 6000 = 18000. Identyfikator oznacza przeglądarkę/urządzenie, nie osobę. Nie łączymy mobile i desktop w jedną osobę. 1500 bezidentyfikatorowych page_view jest poza 18000 identyfikowalnych sesji i poza 12000 użytkowników.
+Zakresy opisują referencję, a nie sztywne limity dla dni demo. Syntetyczna zmienność uwzględnia dni z zerem rzadszych działań; same minima, maksima i sumy nie określają rzeczywistej sekwencji dziennej.
 
-**Obowiązujący rozkład privacy_info:** wszystkie zdarzenia danej identyfikowalnej sesji dziedziczą jej stan. 15000 sesji ma `(analytics_storage=Yes, ads_storage=Yes, uses_transient_token=NULL)`, a 3000 `(Yes, No, NULL)`. 1200 anonimowych page_view ma `(No, No, NULL)`, a 300 `(NULL, NULL, NULL)`. Nieznany mechanizm tokenów pozostaje NULL. Te cztery rozłączne grupy obejmują wszystkie rekordy: 114515 zdarzeń w identyfikowalnych sesjach oraz 1500 anonimowych odsłon. Liczby eventów w dwóch grupach sesji wynikną z ich historii; liczby sesji są stałe.
+#### Kanoniczne działania i interpretacja
 
-Wszystkie 65 purchase występuje w sesjach z analytics_storage=Yes: 50 technicznie powiązanych w grupie ads_storage=Yes, 15 niepołączonych w grupie ads_storage=No. Sam stan zgody nie potwierdza płatnego pochodzenia. Stan jest stały w danej sesji; generator zachowuje jawne ograniczenia historii między sesjami.
-
-Anonimowe 1500 page_view ma user_pseudo_id=NULL, brak ga_session_id oraz brak przypisania do konkretnej rezerwacji lub journey. demo_event_id identyfikuje rekord, nie urządzenie. Nie łączymy ich po czasie, adresie ani batch_id. Również 2500 całkowicie niewidocznych wizyt pozostaje wyłącznie wiedzą scenariusza. Powyższy rozkład jest syntetycznym modelem ograniczeń, nie implementacją consent mode ani benchmarkiem rynku.
-
-### 4.2. Wszystkie 13 zdarzeń
-
-Liczby oznaczają fizyczne eventy w bazowej tabeli, nie sumę różnych jednostek lejka.
-
-| Jednostka | Obowiązująca interpretacja |
+| Metryka działania Meta | Jedyna kanoniczna nazwa działania |
 |---|---|
-| Zdarzenie | Jeden rekord; 116015 rekordów obejmuje powtarzalne odsłony |
-| Sesja | Jeden pełny klucz hotel + stream + user_pseudo_id + ga_session_id; 18000 session_start oznacza 18000 sesji |
-| Urządzenie/przeglądarka | 12000 różnych syntetycznych user_pseudo_id; to nie liczba potwierdzonych osób |
-| Etap w sesji | Maksymalnie jedno wystąpienie danego etapu, więc liczba eventów etapu równa się liczbie sesji tego etapu |
-| Rezerwacja | Kanoniczny booking_id Profitroom; 600 rezerwacji, niezależnie od liczby rewizji i eventów |
-| Journey | Wielosesyjna sekwencja urządzenia; jej licznik kohortowy zostanie wyznaczony w hma_core, osobno od 18000 sesji |
+| Kliknięcie linku | `link_click` |
+| Wyświetlenie strony docelowej | `landing_page_view` |
+| Search / wejście do silnika | `offsite_conversion.fb_pixel_search` |
+| Dodanie do koszyka | `offsite_conversion.fb_pixel_add_to_cart` |
+| Rozpoczęcie finalizacji | `offsite_conversion.fb_pixel_initiate_checkout` |
+| Zakup | `offsite_conversion.fb_pixel_purchase` |
 
+1. Każda metryka korzysta z jednej kanonicznej nazwy działania. Aliasy takie jak `purchase`, `omni_purchase`, `onsite_web_purchase` i pozostałe odpowiedniki opisują to samo działanie w różnych klasyfikacjach Meta; wybór kanonicznej akcji zastępuje ich sumowanie.
+2. Wartość zakupu z `ActionValues` jest przechowywana oddzielnie od liczby zakupów. Koszt emisji pozostaje liczony raz na kampanię i dzień, niezależnie od liczby rodzajów działań.
+3. Zakupy Meta oraz ich raportowana wartość są wynikiem platformowym. Profitroom pozostaje kanonicznym źródłem istnienia rezerwacji, jej wartości, kanału, statusu i anulacji.
+4. Dzienne wyniki Meta są raportem atrybucji, a nie chronologicznym lejkiem jednej osoby. Zasady i okno atrybucji mogą przypisać zakup do dnia bez rozpoczęcia finalizacji w tym samym dniu. Model, okno oraz podstawa daty wymagają jawnego ustalenia przed generatorem Meta (S04).
+5. Aplikacja rozróżnia działania raportowane przez Meta, zachowanie mierzone przez GA4 oraz rezerwacje potwierdzone przez Profitroom. Search Meta i etap GA4 mają odrębne liczniki; samo podobieństwo nazw lub proporcji nie stanowi powiązania rekordów.
+6. Wszystkie kliknięcia i kliknięcia linku są osobnymi metrykami; stosunek sesji do kliknięć zawsze wskazuje konkretny typ kliknięcia. Zakup platformowy i płatne powiązanie rezerwacji podlegają odrębnym zasadom kontraktu.
+7. Dane referencyjne służą wyłącznie kalibracji skali, proporcji i zmienności. Przyszłe wygenerowane rekordy są całkowicie syntetyczne, ze stabilnym seedem i identyfikatorami demo.
 
-| event_name | Liczba | Znaczenie scenariusza |
-|---|---:|---|
-| session_start | 18000 | Dokładnie jeden na identyfikowalną sesję |
-| page_view | 55500 | 54000 w sesjach + 1500 bez klucza sesji/użytkownika |
-| user_engagement | 12000 | Jeden w każdej z 12000 sesji zaangażowanych |
-| engaged_view | 9000 | Jeden na wybraną sesję kwalifikowanego obejrzenia; podzbiór zaangażowanych |
-| step1_dates_and_rooms | 6840 | Unikalna sesja wybiera termin i pokój |
-| step2_extras | 1250 | Podzbiór step1, po wyborze pokoju |
-| step3_confirmation | 430 | Podzbiór step2, etap potwierdzenia przed zakupem |
-| purchase | 65 | 65 różnych obserwowanych zakupów, bez duplikatów w bazie |
-| click_tel | 450 | Kliknięcia telefonu jako intencja |
-| click_mail | 180 | Kliknięcia e-maila jako intencja |
-| form_submit | 300 | Wysłanie fikcyjnego formularza, odrębne od zakupu |
-| open_apartment_details | 6500 | Obejrzenie szczegółów apartamentu |
-| open_package_details | 5500 | Obejrzenie szczegółów pakietu |
-| **Razem** | **116015** | W tym 1500 eventów poza identyfikowalnymi sesjami |
+**Przejście z bazy 0.2 do kalibracji 0.3:** powyższe cele Meta zastępują wcześniejsze 36 000 PLN, 12 000 kliknięć bez rozróżnienia typu i 1 200 000 wyświetleń. Cel zakupów wynosi około 18, wartości około 28 008 PLN; szczegóły atrybucji pozostają odłożone. Stare rozkłady i zależne KPI są wyłącznie historią opisaną w sekcji 6. Aktualne kalibracje pozostałych źródeł znajdują się w sekcjach 3.2–5.
 
-Oba rodzaje szczegółów oferty nakładają się w 3000 sesji: 6500 + 5500 − 3000 = 9000 sesji obejrzenia szczegółów, zgodnych z engaged_view. 6840 sesji step1 stanowi podzbiór tych 9000. Każdy typ otwarcia szczegółów występuje maksymalnie raz na sesję; engaged_view występuje raz po pierwszym kwalifikującym otwarciu. form_submit oznacza skutecznie wysłane zapytanie kontaktowe, maksymalnie raz na sesję, bez danych osobowych formularza. 450 click_tel, 180 click_mail i 300 form_submit mogą nakładać się między sobą i z etapami zakupu; nie są kolejnymi szczeblami ani dodatkowymi rezerwacjami.
+### 3.2. Kalibracja Google Ads — zagregowane dane referencyjne
 
-Docelowa struktura przerwań: 18000 wejść → 12000 zaangażowanych → 9000 szczegółów → 6840 wyborów dat → 1250 dodatków → 430 potwierdzeń → 65 zakupów. Różnice wynoszą odpowiednio 6000, 3000, 2160, 5590, 820, 365. Każdy głębszy etap występuje po poprzednim, maksymalnie raz w sesji; purchase również maksymalnie raz. Powtórki odsłon page_view pozostają dozwolone. Udziały w 18000 sesji: step1 38%, step2 6,94%, step3 2,39%, purchase 0,36%. Przejścia między etapami: step1→step2 18,27%, step2→step3 34,40%, step3→purchase 15,12%.
+**Finalna kalibracja Google Ads została zaakceptowana.** Cały scenariusz w wersji 0.3 został zaakceptowany po kalibracji wszystkich źródeł. Referencją są przekazane zagregowane dane Google Ads w BigQuery za **07.07–29.08.2026 włącznie, czyli 54 dni**. Dane referencyjne My Story Sopot służą kalibracji; demo otrzymuje własne syntetyczne rekordy, identyfikatory i nazwy.
 
-**ZAAKCEPTOWANE:** wartości są całkowicie syntetyczne, inspirowane realistycznymi proporcjami lejka, a nie skopiowanymi rekordami ani dokładnymi wynikami klienta. Katalog zachowuje 13 zdarzeń; step3_confirmation jest jedyną nazwą trzeciego etapu przed purchase. W dokumentach nie znaleziono odrębnej wcześniej zaakceptowanej definicji begin_checkout; wcześniejszy projekt scenariusza opisywał nim to samo miejsce przed zakupem.
+Kampanie referencyjne pogrupowano funkcjonalnie do **Search Generic, Brand i GHA**. Historyczne `Main` oraz `SEARCH | MAIN | PL` są kolejnymi wariantami logicznej grupy Search Generic: działały kolejno w czasie, a nie jako dwie stałe kampanie równoległe przez cały okres. Te nazwy opisują wyłącznie mapowanie referencji; struktura demo jest syntetyczna.
 
-Współczynniki przejścia różnią się według kanału. Poniższy zaakceptowany rozkład sumuje się do docelowego lejka. Źródło oznacza źródło sesji, w której wystąpił dany etap; dla purchase jest to sesja finalizacji, a nie dowód pozyskania rezerwacji.
+#### Łączne wyniki i skalowanie
 
-| Kanał sesji | Sesje | step1 | step2 | step3 | purchase | Purchase / sesje |
-|---|---:|---:|---:|---:|---:|---:|
-| Paid Social — Meta | 7200 | 3000 | 250 | 50 | 2 | 0,028% |
-| Paid Search — Google Brand | 1800 | 800 | 180 | 60 | 10 | 0,556% |
-| Paid Search — Google ogólna | 3000 | 1200 | 250 | 90 | 12 | 0,400% |
-| Organic Search (Google) | 2400 | 700 | 160 | 55 | 6 | 0,250% |
-| Direct | 3000 | 950 | 350 | 155 | 32 | 1,067% |
-| Referral | 600 | 190 | 60 | 20 | 3 | 0,500% |
-| **Razem** | **18000** | **6840** | **1250** | **430** | **65** | **0,361%** |
+Demo obejmuje 90 dni i hotel około dwa razy większy. Mnożnik wynosi **90 / 54 × 2 = 10/3 ≈ 3,3333**. Obliczenia wykorzystują pełną wartość 10/3, a cele poniżej są zaokrąglone orientacyjnie.
 
-Direct najczęściej domyka lejek: 32 z 65 zakupów i najwyższy udział zakupów w sesjach. Paid Search ma pośrednią skuteczność (22/4800=0,458%), a Paid Social generuje dużo wejść i rozpoczęć przy 2 zakupach w tej samej sesji. Część zaobserwowanych kontaktów Paid Social ujawnia się dopiero w ścieżkach wielosesyjnych; nie jest to potwierdzona przyczynowość.
+| Metryka | Referencja: 54 dni | Orientacyjny cel demo: 90 dni ×2 |
+|---|---:|---:|
+| Koszt | 7 222,24 PLN | około 24 074 PLN |
+| Wyświetlenia | 66 208 | około 220 693 |
+| Kliknięcia | 3 411 | około 11 370 |
+| `step1_dates_and_rooms` | 1 323,15 | około 4 411 |
+| `step2_extras` | 70,17 | około 234 |
+| `step3_confirmation` | 19 | około 63 |
+| Zakupy raportowane przez Google Ads (`Zakup`) | 3 | około 10 |
+| Wartość zakupów raportowana przez Google Ads | 16 112 PLN | około 53 707 PLN |
 
-Ścieżki wielosesyjne mają dodatkowe wcześniejsze kontakty; powyższy lejek opisuje etapy w obrębie sesji, a nie gotowy wskaźnik kohort journey z kontraktu. Definicja journey i jego cohort_date wymaga S06 przed późniejszą agregacją. Purchase GA4 jest obserwacją pomiarową; rezerwację, jej wartość i aktualny status potwierdza Profitroom.
+#### Struktura kampanii referencyjnej
 
-W bazie każdy event ma własny demo_event_id i raw_row_id. event_params pozostaje ARRAY rekordów key/value, z jednym nośnikiem wartości na parametr. Zawiera typowane ga_session_id, session_engaged, engagement_time_msec, currency i fikcyjne adresy odpowiednio do zdarzenia. loaded_at, source_system=ga4, batch_id, is_synthetic=true, scenario_id, generator_version, ingest_date, source_timezone oraz wszystkie wymagane pola DDL są wypełnione. metric_date wynika z event_timestamp w Europe/Warsaw; ingest_date z loaded_at w UTC. Query do tej tabeli ogranicza metric_date.
-
-### 4.3. Źródła sesji i kliknięcia reklam
-
-| Ostatnie źródło sesji | Identyfikowalne sesje |
-|---|---:|
-| Meta | 7200 |
-| Google Brand | 1800 |
-| Google Ads ogólna | 3000 |
-| Organic Search (Google) | 2400 |
-| Direct | 3000 |
-| Referral | 600 |
-| **Razem** | **18000** |
-
-To rozkład sesji według zaobserwowanego źródła, a nie rozkład rezerwacji. Równość 18000 kliknięć reklam i 18000 sesji ogółem jest przypadkowa: 12000 sesji płatnych uzupełnia 6000 Direct/Organic/Referral. Kliknięcie nie jest sesją; Direct i Organic mogą być powrotami urządzeń wcześniej pozyskanych przez reklamę. Różnica liczników nie jest liczbą utraconych wizyt. Pomocnicze ilorazy sesji do kliknięć: Meta 7200/12000=60%, Google 4800/6000=80%. Różnicę tworzą powtarzane kliknięcia w tej samej sesji, wizyty bez zgody, brak pomiaru, granice sesji i powroty. Nie projektujemy awarii technicznej jako automatycznego wyjaśnienia. Scenariusz nie udostępnia aplikacji pełnego mianownika indywidualnych kliknięć; click_arrival_rate pozostaje NULL, a sessions_per_click jest dostępne z odpowiednią etykietą.
-
-traffic_source opisuje pierwszy kontakt urządzenia w scenariuszu, a session_traffic_source_last_click opisuje sesję. Wszystkie trzy zaakceptowane podzbiory manual_campaign, google_ads_campaign i cross_channel_campaign są obsługiwane; nieadekwatny podzbiór może być NULL. Google Brand otrzymuje ID kampanii brand, Organic nie otrzymuje płatnego ID. Direct jest jawną obserwowaną kategorią; nieznany source/medium pozostaje nieznany. Oznaczenia kanałów nie są wyprowadzane wyłącznie z nazw kampanii.
-
-## 5. Profitroom — kanoniczna sprzedaż
-
-600 rzeczywistych w sensie scenariusza rezerwacji (wszystkie syntetyczne). Baza nie zawiera rekordów testowych; dodatkowy wariant testowy jest odseparowany w sekcji 9. Liczby odnoszą się do unikalnych booking_id na końcowe as_of_at, nie do liczby rewizji.
-
-| Segment | Wszystkie rezerwacje | Aktywne | Anulowane | Pozostałe statusy | Aktywna wartość kontrolna PLN |
-|---|---:|---:|---:|---:|---:|
-| direct_web (Booking Engine) | 150 | 120 | 25 | 5 | 480000 |
-| OTA, phone, email i inne — razem | 450 | 360 | 65 | 25 | 1440000 |
-| **Razem** | **600** | **480** | **90** | **30** | **1920000** |
-
-Wartości kontrolne zachowują średnią 4000 PLN i różnorodność kwot. Podział pozostałych 450 rezerwacji na konkretne kanały oraz rozdział pending/option/no_show (5 online i 25 poza online) zostanie ustalony przy Profitroom (S03/S08). „Pozostałe kanały” są zbiorczą grupą scenariusza, nie nowym kodem źródłowego kanału ani synonimem OTA. Każda przyszła rezerwacja otrzyma konkretny kanał i status. Cały direct i udział OTA będą obliczane po tym podziale.
-
-Aktywne 480 = confirmed 360 + completed 120. Rozdział completed pomiędzy kanały jest odłożony do Profitroom; zakończony pobyt musi poprzedzać as_of_at. Wszystkie daty pobytu są późniejsze od utworzenia, check_out jest późniejsze od check_in.
-
-Kontrolna historia: 600 pierwszych zapisów + 90 rewizji anulacji + 120 rewizji completed po confirmed = **810 wierszy rewizji**. 15 anulacji dotyczy czerwcowych rezerwacji i następuje w sierpniu. Historia koryguje czerwcowe kohorty, a nie tworzy sierpniowych rezerwacji. Dokładne rekordy i format rewizji powstaną przy Profitroom; nie są warunkiem generatora GA4.
-
-## 6. Powiązania, obserwowane ścieżki i granice wnioskowania
-
-### 6.1. Bilans purchase–rezerwacja
-
-**USTALONE:** porównanie purchase dotyczy wyłącznie Booking Engine i zgodnego statusu. Wszystkie rezerwacje hotelu oraz OTA pozostają osobnymi zestawieniami sprzedaży, poza mianownikiem pokrycia purchase.
-
-| Podzbiór purchase GA4 | Liczba | Później aktywne | Później anulowane | Dostępność połączenia |
-|---|---:|---:|---:|---|
-| Zweryfikowany transaction_id → booking_id | 50 | 44 | 6 | Jednoznaczna tożsamość |
-| Brak transaction_id | 8 | 6 | 2 | NULL w GA4 |
-| ID obecne, bez dostępnego mapowania | 7 | 6 | 1 | Brak dowodu relacji |
-| **Razem** | **65** | **56** | **9** | **50 połączonych** |
-
-Pozostałe **85** rezerwacji Booking Engine bez purchase GA4 obejmuje **64 aktywne + 16 anulowanych + 5 innych statusów**. Bilans: 65+85=150; aktywne 44+6+6+64=120; anulowane 6+2+1+16=25. Pokrycie obserwacji aktywnych wynosi **56/120=46,67%** (wiedza generatora), a pokrycie zweryfikowanego połączenia **44/120=36,67%** (możliwe do wykazania z dostępnych źródeł). Ukryte przypisania 15 niepołączonych purchase nie trafiają do aplikacji.
-
-**Mianowniki KPI tego scenariusza:** „aktywna rezerwacja online” oznacza wyłącznie aktywną rezerwację przez Booking Engine (`direct_web`), utworzoną w okresie 1 czerwca–29 sierpnia 2026, ze statusem confirmed/completed na as_of_at. Wspólny mianownik wynosi 120 takich rezerwacji. 46,67% = 56 purchase dotyczących aktywnych rezerwacji Booking Engine / 120 aktywnych rezerwacji Booking Engine (wiedza generatora). 36,67% = 44 jednoznacznie połączone aktywne rezerwacje Booking Engine / 120 aktywnych rezerwacji Booking Engine (zweryfikowane połączenia). OTA, telefon, e-mail i wszystkie pozostałe kanały są wyłączone z obu mianowników. „Koszt reklam na aktywną rezerwację online” = 60000 PLN kwalifikujących kosztów reklam / 120 aktywnych rezerwacji Booking Engine = 500 PLN; ten mianownik ma ten sam zakres kanału, okresu i statusu.
-
-#### Kontrolowane braki aktywnych rezerwacji online
-
-| Przyczyna syntetyczna | Aktywne rezerwacje bez purchase | Reprezentacja pomiarowa |
-|---|---:|---|
-| Odmowa zgody analitycznej | 32 | Zakupy należą do podzbioru 2500 całkowicie niewidocznych wizyt; zero rekordów purchase i brak identyfikatora do odtworzenia relacji |
-| Brak poprawnego powrotu/pomiaru po zewnętrznym checkout | 18 | W 18 spośród 365 sesji kończących się na step3 pomiar urywa się po wyjściu; sesje mają analytics_storage=Yes, ads_storage=No |
-| Utrata identyfikatora lub ciągłości sesji | 14 | W 14 innych spośród tych 365 sesji istnieje wcześniejszy etap step3, ale dalszej obserwacji zakupu brak; analytics_storage=Yes, ads_storage=No |
-| **Razem** | **64** | Rozłączne przypadki, wliczone w istniejące sumy |
-
-Te przyczyny są konstrukcją syntetyczną, nie potwierdzonymi benchmarkami rynku. Wspólna historia generatora służy testom; źródłowe GA4 nie otrzymuje ukrytych połączeń. Anonimowe zdarzenia pozostają niepołączalne. Dla 16 anulowanych bez purchase przyjmujemy całkowity brak obserwacji w podzbiorze 2500 niewidocznych wizyt; pozostałe 5 statusów nie ma zarejestrowanego purchase. Wszystkie te podzbiory mieszczą się w bazowych liczebnościach, a nie powiększają ich.
-
-#### Deterministyczne kwoty i wspólna historia
-
-Przyszły generator najpierw wyznacza 65 technicznych indeksów zakupu w stabilnej kolejności daty, sesji i zdarzenia. Dla każdego indeksu wspólna funkcja oparta na seedzie, scenario_id i wersji wyznacza datę utworzenia, booking_id, wewnętrzną tożsamość transakcji oraz dodatnią kwotę całkowitą w groszach. Ta sama funkcja zostanie wykorzystana przez Profitroom. Maskowanie 8 transaction_id oraz brak publicznej mapy kolejnych 7 następuje dopiero przy odwzorowaniu źródeł. Generator nie wpisuje tej ukrytej mapy do event_params ani do widoków aplikacji.
-
-Dla podzbiorów o zadanej sumie wartości stosujemy pary odchyleń w groszach od 400000 groszy: +d i −d, z deterministycznym doborem i kolejnością, a przy nieparzystej liczebności jeden element bazowy. Odchylenia mieszczą się w cenach profilu hotelu. Dzięki temu zróżnicowane kwoty 30 aktywnych płatnie powiązanych dają 120000 PLN, a 14 pozostałych aktywnych powiązanych 56000 PLN. Pozostałe kwoty również mają stałe wyliczenie. Wszystkie 65 wartości GA4 odtwarza się identycznie w Profitroom, także dla brakującego publicznego połączenia. Kwoty wewnętrzne są w groszach; wymagane przez DDL purchase_revenue FLOAT64 to reprezentacja kwoty PLN, walidowana po zaokrągleniu do grosza. Status po anulacji zmienia się w Profitroom, a historyczna wartość purchase pozostaje obserwacją.
-
-Wśród 44 aktywnych powiązanych tożsamością: **30** ma kwalifikujące obserwacje płatne i wartość **120000 PLN**; **14** to organiczne/direct bez dowodu płatnego, wartość **56000 PLN**. Łączna wartość aktywnych z potwierdzoną tożsamością wynosi 176000 PLN. 6 powiązanych anulowanych jest poza licznikiem linked_booking_roas.
-
-### 6.2. Ścieżki do 50 technicznie powiązanych zakupów
-
-| Pierwszy → ostatni zaobserwowany kontakt | Wszystkie ścieżki | Aktywne powiązane rezerwacje | Anulowane |
+| Metryka | Search Generic | Brand | GHA |
 |---|---:|---:|---:|
-| Meta → Google Brand | 10 | 9 | 1 |
-| Meta → Direct | 12 | 10 | 2 |
-| Meta → Meta | 2 | 2 | 0 |
-| Google Ads ogólna → Google Ads ogólna | 10 | 9 | 1 |
-| Organic Search (Google) → Direct | 10 | 9 | 1 |
-| Direct → Direct | 6 | 5 | 1 |
-| **Razem** | **50** | **44** | **6** |
+| Koszt PLN | 4 471,33 | 2 382,98 | 367,92 |
+| Wyświetlenia | 54 692 | 8 405 | 3 111 |
+| Kliknięcia | 2 020 | 1 259 | 132 |
+| `step1_dates_and_rooms` | 467,64 | 747,51 | 108 |
+| `step2_extras` | 9 | 41,17 | 20 |
+| `step3_confirmation` | 1 | 13 | 5 |
+| `Zakup` | 0 | 3 | 0 |
 
-Każda z tych ścieżek ma dostępny identyfikator urządzenia i jedną rezerwację, 1–3 sesje, a wszystkie kontakty mieszczą się w 30 dniach przed wynikiem. Część Meta→Brand i Meta→Direct powraca po 8–20 dniach: Meta jest pierwszym zaobserwowanym kontaktem, lecz platformowa konwersja Meta nie musi jej uwzględniać. W sesji końcowej traffic_source pozostaje Meta, podczas gdy sesyjne źródło wskazuje Brand albo Direct. Nie oznacza to potwierdzonego przyczynowego wpływu Meta ani Google.
+Brand ma raportowaną wartość zakupów **16 112 PLN**, a kontakty telefoniczne są osobnymi działaniami: **`Telefon`: 8**, **`Calls from ads`: 2**. Dla pozostałych grup nie przekazano osobnych wartości tych kontaktów; brak informacji pozostaje brakiem, a nie domyślnym zerem.
 
-Pozostałych 15 purchase GA4 ma również niezależnie zaplanowany brak obserwowalnej historii poprzednich sesji (przerwana ciągłość identyfikatora przed sesją zakupu); sama nieobecność transaction_id nie oznacza braku ścieżki. W tym scenariuszu nie włącza się ich do mianownika pełnych ścieżek. Ich końcowe sesje obejmują 2 Google ogólna, 6 Organic, 4 Direct i 3 Referral. Razem ze zidentyfikowanymi ścieżkami daje to dokładnie kanałowy rozkład 65 zakupów z sekcji 4.2.
+**Kontrola kosztów referencji:** suma przekazanych kosztów grup wynosi 7 222,23 PLN, podczas gdy przekazany wynik łączny wynosi 7 222,24 PLN. Zachowujemy oba poziomy raportu i jawną różnicę 0,01 PLN; jest to zaakceptowana różnica zaokrągleń, a nie otwarty błąd wymagający wyjaśnienia. Skalowanie orientacyjne korzysta z przekazanego wyniku łącznego. Pozostałe liczniki z tabeli grup sumują się do odpowiednich wyników łącznych.
 
-Pokrycie kwalifikowanych ścieżek względem wszystkich obserwowanych purchase wynosi 50/65=76,92%. Dobór podzbioru nie uprawnia do uogólnienia na wszystkie rezerwacje hotelu. Dla outcome_type=purchase mianownik wynosi 50; dla active_booking wynosi 44 i udziały trzeba policzyć ponownie.
+#### Udziały referencyjne i zaakceptowany mix demo
 
-Na pełnym zbiorze 50 obserwowanych ścieżek do purchase pierwszy kontakt Meta ma 24/50=48%; ostatni Google Brand 10/50=20%, ostatni Google Ads ogólna 10/50=20%, ostatni Direct 28/50=56%, ostatni Meta 2/50=4%. Nie sumujemy ścieżek różnych outcome_type. Warunkowy udział Meta w ścieżkach kończących się Brand wynosi 10/10=100% wyłącznie w tym celowo skonstruowanym podzbiorze.
+| Grupa | Udział kosztu referencji | Udział wyświetleń referencji | Udział kliknięć referencji | Docelowy udział budżetu demo | Orientacyjny budżet demo |
+|---|---:|---:|---:|---:|---:|
+| Search Generic | 61,91% | 82,61% | 59,22% | **60%** | około 14 445 PLN |
+| Brand | 33,00% | 12,69% | 36,91% | **35%** | około 8 425 PLN |
+| GHA | 5,09% | 4,70% | 3,87% | **5%** | około 1 204 PLN |
 
-Granice obserwacji: pierwsze kontakty nie poprzedzają 1 czerwca. Scenariusz nie udaje znajomości wcześniejszej historii urządzenia. Raport za pierwsze 30 dni ujawnia ograniczone okno wstecz; interpretacja „pierwszy kontakt” zawsze oznacza pierwszy zaobserwowany. Szersza atrybucja i cross-device pozostają poza zakresem.
+Zaakceptowany mix budżetu jest lekko wygładzony względem referencji, zamiast odwzorowania struktury My Story Sopot 1:1. Orientacyjne budżety grup sumują się do 24 074 PLN. Dokładne kwoty w groszach i rozdział reszt zaokrągleń zostaną ustalone przed generatorem. Udział budżetu nie narzuca identycznego udziału kliknięć, wyświetleń ani konwersji; rozkład tych metryk powinien uwzględniać różne role grup i wspólne cele łączne.
 
-### 6.3. Oczekiwane KPI kontrolne, warunkowe wobec akceptacji reguł
+#### Działania kanoniczne i interpretacja
 
-| Wynik dla całych 90 dni | Arytmetyczny wynik kontrolny |
+1. Google Ads pokazuje wyniki platformowe i atrybucyjne. Każda akcja zachowuje własny licznik: `step1_dates_and_rooms`, `step2_extras`, `step3_confirmation`, `Zakup`; osobno kontakty `Telefon` i `Calls from ads`. Suma wszystkich działań nie jest liczbą rezerwacji. Kontakty pozostają odrębne również między sobą, bez założenia unikalności osób.
+2. Ułamkowe wartości konwersji są dopuszczalne jako kredyty modelu atrybucji. Wartości 1 323,15 i 70,17 oznaczają wyniki Google Ads, a nie liczbę fizycznych eventów GA4. Zbieżne nazwy etapów zachowują odrębność źródła, modelu i okna.
+3. Zakupy i wartości zakupów raportowane przez Google Ads pozostają wynikami platformowymi. Profitroom jest kanonicznym źródłem potwierdzonej rezerwacji, jej kanału, wartości, statusu oraz anulacji; raport Google Ads nie wyznacza prawdziwej liczby rezerwacji ani przychodu hotelu.
+4. GA4 pokazuje zachowanie użytkowników i lejek. Techniczne powiązanie i kwalifikacja marketingowa rezerwacji wymagają dowodów określonych w kontrakcie. Platformowe zakupy Meta i Google są prezentowane oddzielnie.
+5. Przyszły generator tworzy nowe dane oraz realistyczne, nieregularne wahania dzienne przy stałym seedzie. Agregaty referencyjne służą skali i proporcjom, zamiast mechanicznego powielania pojedynczych dni źródłowych. Wyniki atrybucyjne dnia nie muszą tworzyć chronologicznego lejka jednej osoby.
+6. Trzy zakupy w 54 dniach to mała próba. Akceptacja kalibracji określa scenariusz demo, a ocena skuteczności nadal uwzględnia jakość, liczebność i progi hotelu. Model, okno i podstawa daty raportowania wymagają określenia przed generatorem Google Ads.
+
+**Przejście z bazy 0.2:** ta sekcja zastępuje dawny model dwóch kampanii Google, 24 000 PLN kosztu, 120 000 wyświetleń i 6 000 kliknięć. Obowiązują trzy grupy Google: Search Generic, Brand i GHA, obok dwóch ról Meta. Dotychczasowe syntetyczne ID Brand i kampanii ogólnej można zachować; ID GHA i jego mapowanie do GA4 zostaną uzgodnione przed generatorami, bez kopiowania identyfikatorów referencji.
+
+Wiersze starego Google w sekcjach 2–3 stanowią historyczną bazę 0.2. Aktualne liczebności referencyjne GA4 i Profitroom opisują sekcje 4–5; rozdzielenie syntetycznego ruchu GHA wymaga uzgodnienia. Historyczne KPI znajdują się w sekcji 6. Kalibracje czterech źródeł i scenariusz 0.3 zostały zaakceptowane; szczegóły zależności pozostają odroczone zgodnie z sekcją 10.
+
+## 4. GA4 — aktualna kalibracja referencyjna
+
+Referencja obejmuje **07.07–29.08.2026, 54 dni**. Mnożnik dla 90-dniowego demo hotelu około dwa razy większego wynosi **90 / 54 × 2 = 10/3 ≈ 3,3333**. Obliczenia korzystają z pełnego 10/3, a cele są orientacyjne, zaokrąglone do zdarzeń.
+
+| Zdarzenie | Referencja: 54 dni | Orientacyjny cel demo |
+|---|---:|---:|
+| session_start | 27 637 | około 92 123 |
+| page_view | 69 243 | około 230 810 |
+| user_engagement | 37 432 | około 124 773 |
+| step1_dates_and_rooms | 10 862 | około 36 207 |
+| step2_extras | 582 | około 1 940 |
+| step3_confirmation | 154 | około 513 |
+| purchase | 24 | około 80 |
+| click_tel | 177 | około 590 |
+| form_submit | 71 | około 237 |
+| open_apartment_details | 4 061 | około 13 537 |
+| open_package_details | 1 816 | około 6 053 |
+| engaged_view | Brak wystarczającej podstawy referencyjnej | Do uzgodnienia; bez celu liczbowego |
+| click_mail | Brak wystarczającej podstawy referencyjnej | Do uzgodnienia; bez celu liczbowego |
+
+Są to liczby zdarzeń, odrębne od liczby unikalnych urządzeń, sesji, journey i rezerwacji. session_start jest licznikiem zdarzeń rozpoczęcia sesji. Referencja ma więcej user_engagement niż session_start; syntetyczny model dopuszcza wiele user_engagement w sesji. Liczba urządzeń, powtarzalność sesji, rozkład zgód i zdarzenia bez identyfikatorów wymagają ponownego uzgodnienia. Dawne 116015 zdarzeń nie jest aktualną sumą. Pełna suma wszystkich 13 typów pozostaje nieustalona do decyzji o dwóch zdarzeniach bez podstawy referencyjnej i dokładnych liczebnościach generatora.
+
+### 4.1. Referencyjny lejek zdarzeniowy
+
+| Iloraz liczników | Obliczenie | Wynik |
+|---|---|---:|
+| session_start → step1 | 10862 / 27637 | 39,30% |
+| step1 → step2 | 582 / 10862 | 5,36% |
+| step2 → step3 | 154 / 582 | 26,46% |
+| step3 → purchase | 24 / 154 | 15,58% |
+| session_start → purchase | 24 / 27637 | około 0,087% |
+
+**Te proporcje są ilorazami liczby zdarzeń w agregacie. Nie stanowią dowodu, że te same osoby lub sesje przechodziły kolejno przez wszystkie etapy.** Nie wyznaczają też liczby przerwanych indywidualnych ścieżek.
+
+Osobny syntetyczny model indywidualnych ścieżek może określić kolejność zdarzeń, powroty i braki pomiaru, ale wymaga ponownego uzgodnienia przed generatorem. Dawny wymóg jednej obserwacji każdego etapu w sesji oraz pełnego lejka dla każdego purchase nie wynika z referencji. form_submit pozostaje gałęzią kontaktową, a nie rezerwacją. step3_confirmation pozostaje nazwą trzeciego etapu. Okno obserwowanych ścieżek wynosi 30 dni; wiarygodność łączenia zależy od dostępnych identyfikatorów, a nie od podobieństwa agregatów.
+
+### 4.2. Kanały i urządzenia referencyjne
+
+| Kanał | Przybliżony udział w sesjach |
+|---|---:|
+| Paid Social | 35,01% |
+| Paid Search | 14,67% |
+| Organic Search | 13,67% |
+| Referral | 11,14% |
+| Unassigned | 11,04% |
+| Organic Social | 6,94% |
+| Direct | 6,21% |
+
+Podane udziały sumują się do 98,68%. Pozostałe 1,32 punktu procentowego wymaga ustalenia zakresu pozostałych kategorii; nie przypisujemy go samodzielnie do Direct ani Unassigned i nie normalizujemy tabeli do 100%. Dokładny podział kanałów demo, w tym Brand i GHA, pozostaje do uzgodnienia.
+
+**Mobile: około 87,45% sesji.** Dawne 70% mobile jest historyczne. Podział pozostałych urządzeń wymaga danych lub osobnej decyzji. Pierwsze źródło urządzenia jest odrębne od źródła sesji; Direct oraz nieznane źródło pozostają różnymi kategoriami. Sesje i kliknięcia reklam są różnymi jednostkami, a różnica ich liczników sama nie dowodzi awarii ani utraty pomiaru.
+
+### 4.3. Purchase i wartość
+
+W **24 referencyjnych purchase brakowało wiarygodnego przychodu GA4**. Brak wartości nie oznacza zera. GA4 dostarcza obserwacji zachowania i lejka, a Profitroom pozostaje kanonicznym źródłem wartości rezerwacji. Sposób reprezentacji braków wartości w demo i ewentualnych zweryfikowanych par wymaga uzgodnienia; nie odtwarzamy przychodu GA4 z samego agregatu Profitroom.
+
+## 5. Profitroom — aktualna kalibracja kanonicznej sprzedaży
+
+Referencja obejmuje **54 dni**. Mnożnik: **90 / 54 × 2 = 10/3 ≈ 3,3333**. Profitroom pozostaje kanonicznym źródłem rezerwacji, kanału, wartości i anulacji.
+
+| Metryka | Referencja | Orientacyjny cel demo |
+|---|---:|---:|
+| Wszystkie rezerwacje | 83 | około 277 |
+| Nieanulowane | 69 | około 230 |
+| Anulowane | 14 | około 47 |
+| Wartość nieanulowanych | 171 918,61 PLN | około 573 062 PLN |
+| Średnia wartość nieanulowanej rezerwacji | około 2 491,57 PLN | Wzorzec rozkładu wartości, bez nowego KPI |
+| Wszystkie rezerwacje Booking Engine | 11 | około 37 |
+
+| Kanał referencyjny | Wszystkie | Nieanulowane |
+|---|---:|---:|
+| Booking.com | 50 | 40 |
+| Expedia | 22 | 20 |
+| Booking Engine | 11 | 9 |
+| Razem | 83 | 69 |
+
+Dokładne całkowite liczebności demo i podział kanałów wymagają uzgodnienia z zaokrągleniami. Skala ×2 zwiększa łączną liczbę i wartość rezerwacji, a nie automatycznie cenę pojedynczej rezerwacji.
+
+**Status dostępny w referencji:** nieanulowane albo anulowane. Ta tabela nie potwierdza statusów confirmed, completed ani active. Dawne confirmed/completed były elementem czysto syntetycznego modelu 0.2; obecna referencja ich nie potwierdza, a ich przyszłe generowanie wymaga jawnej decyzji.
+
+Kontrakt definiuje aktywne rezerwacje przez confirmed/completed. Samo „nieanulowane” nie wystarcza do ustalenia tego mianownika. Dostępność statusów, ewentualny syntetyczny model oraz KPI aktywnych rezerwacji pozostają do uzgodnienia. Brak potwierdzenia oznacza brak gotowego wyniku KPI, zamiast automatycznej zamiany nieanulowanych na aktywne.
+
+## 6. Powiązania GA4–Profitroom i zależne KPI — do ponownego uzgodnienia
+
+Nowe orientacyjne cele to **80 purchase GA4** i **37 wszystkich rezerwacji Booking Engine**. Są to różne obserwacje. Agregaty referencyjne nie pozwalają ustalić relacji 1:1 ani przyjąć `1 GA4 purchase = 1 Booking Engine reservation`. Nie wyjaśniają również przyczyny różnicy; nie dopisujemy duplikatów, brakujących rezerwacji ani fikcyjnych powiązań jako rzekomo potwierdzonego rozwiązania.
+
+Finalny syntetyczny model linkowania wymaga osobnego ponownego uzgodnienia. Zweryfikowany transaction_id potwierdza tożsamość rezerwacji; płatne powiązanie wymaga dodatkowego dowodu marketingowego. OTA, telefon i e-mail pozostają poza mianownikiem pokrycia Booking Engine.
+
+Poniższe wartości są wyłącznie **historyczną bazą wymagającą ponownego uzgodnienia po finalizacji kalibracji źródeł**; nie obowiązują jako cele generatora ani KPI:
+
+| Historyczne założenie 0.2 | Stan po kalibracji |
 |---|---|
-| Wydatki | 36000 + 24000 = 60000 PLN |
-| ROAS platformowy Meta / Google | Odroczony do nowego bilansu konwersji i wartości platform w S04 |
-| Koszt konwersji Meta / Google | Odroczony do liczników platformowych w S04 |
-| Koszt reklam na aktywną rezerwację online | 60000/120 = 500 PLN |
-| Wartość aktywnych rezerwacji | 1920000 PLN |
-| Udział direct_web w aktywnej liczbie i wartości | 120/480 = 25%; 480000/1920000 = 25% |
-| Udział całego direct (web + phone + email) | Odroczony do podziału pozostałych kanałów Profitroom |
-| Współczynnik anulacji | 90/600 = 15% |
-| Powiązanie tożsamości aktywnych online | 44/120 = 36,67%; jednostka: aktywna rezerwacja direct_web |
-| Kandydat linked_booking_roas | 120000/60000 = 2,00, dopiero po spełnieniu pięciu warunków |
+| 18000 sesji, 12000 urządzeń, 116015 eventów; lejek 18000 → 6840 → 1250 → 430 → 65 | Zastąpione kalibracją GA4; liczba urządzeń i pełna suma do uzgodnienia |
+| engaged_view 9000, click_mail 180; mobile 70%; dawne macierze kanałów i urządzeń | Brak aktualnej akceptacji tych celów |
+| Zgody 15000/3000 sesji, 1500 anonimowych odsłon i 2500 niewidocznych wizyt | Syntetyczny model braków i zgód do uzgodnienia |
+| 600 rezerwacji, 480 aktywnych, 90 anulowanych, 30 innych; 1920000 PLN; średnia 4000 PLN | Zastąpione referencją i celami Profitroom |
+| Booking Engine 150 wszystkich / 120 aktywnych; 810 rewizji | Liczebności i historia statusów do uzgodnienia |
+| 65 purchase przypisanych do 65 różnych rezerwacji Booking Engine; 50 linked, 8 bez ID, 7 bez mapy | Model relacji wycofany z części obowiązującej |
+| 56 później aktywnych, 9 anulowanych purchase; 44 połączone aktywne; pokrycie 46,67% i 36,67% | Historyczne; nowego pokrycia nie ustalono |
+| 64 braki pomiaru podzielone 32+18+14; wspólne kwoty wszystkich 65 purchase | Przyczyny braków, liczby i kwoty par do uzgodnienia |
+| 50 ścieżek, pokrycie 76,92%, Meta na początku 48%, podziały domknięć | Historyczne; nowy rozkład ścieżek do uzgodnienia |
+| 30 płatnie powiązanych o wartości 120000 PLN i 14 pozostałych o wartości 56000 PLN | Historyczne; brak nowych liczników linked |
+| Meta 36000 PLN + Google 24000 PLN = 60000 PLN; koszt online 500 PLN; kandydat linked ROAS 2,00 | Historyczne; bez nowych KPI w tym zadaniu |
+| Udział direct_web 25%, anulacje 15%, wzrosty bloków 33,33% i 25% | Historyczne wyniki starego bilansu |
+| Sesje/kliknięcia Meta 60%, Google 80%; równość 18000 kliknięć i sesji | Historyczne porównania, nie aktualne wskaźniki |
 
-Mianownik pokrycia tożsamości obejmuje także niepołączone aktywne online. 30/120=25% opisuje udział aktywnych online ze zweryfikowanym płatnym powiązaniem, a nie samodzielną miarę jakości pomiaru: część z pozostałych rezerwacji jest organiczna. Pokrycie technicznych dowodów płatnych wymaga osobnego kwalifikującego mianownika ustalonego w odroczonej części S04/S05. Do zatwierdzenia tej definicji i progu linked_booking_roas pozostaje **NULL**, z metric_status i reason_codes; wartość 2 jest oczekiwaniem arytmetycznym, a nie obietnicą wyniku UI.
+Linked ROAS wymaga pięciu warunków: jednoznacznego połączenia purchase z aktywną rezerwacją; dodatkowego kwalifikującego powiązania płatnego; zgodnego zakresu kosztu; jednokrotnego uwzględnienia wartości rezerwacji; wystarczającego pokrycia i jakości. Do ich spełnienia wynik pozostaje NULL z metric_status i reason_codes. Nieznane pokrycie pozostaje UNKNOWN. Nowe KPI kosztowe, ROAS i pokrycia będą ustalone oddzielnie, bez wyliczania ich z nieuzgodnionych mianowników.
 
-Pięć warunków: purchase łączy się z aktywnym Profitroom; istnieje dodatkowa kwalifikująca informacja płatna; koszt obejmuje ten sam zakres i okres, również kampanie bez konwersji; booking wnosi wartość raz; pokrycie i jakość spełniają skonfigurowane wymagania. AI otrzyma wyłącznie zweryfikowane wyniki silnika i ich ograniczenia.
+## 7. Rozkład 90 dni — do ponownego uzgodnienia
 
-## 7. Rozkład 90 dni i testy zmiany okresów
+Zakres 1 czerwca–29 sierpnia 2026 pozostaje stały. Dawne trzy bloki po 30 dni oraz ich sumy sesji, kosztów i rezerwacji są historyczne; nie są ograniczeniami nowego generatora. Dokładne rozkłady dzienne i kampanijne wymagają uzgodnienia po kalibracji. Przyszły generator zachowa sumy zatwierdzonej wersji, deterministyczny sposób rozdziału reszt i realistyczną nieregularność, bez kopiowania rzeczywistych dni.
 
-Ustalone trzy bloki po 30 dni: 1–30 czerwca, 1–30 lipca, 31 lipca–29 sierpnia. To rozkład kontrolny seeda, nie ograniczenie selektora aplikacji.
+## 8. Reguły spójności i syntetyczności
 
-| Baza | Blok 1 | Blok 2 | Blok 3 | Razem |
-|---|---:|---:|---:|---:|
-| Sesje | 5000 | 6500 | 6500 | 18000 |
-| Meta spend PLN | 9000 | 12000 | 15000 | 36000 |
-| Google spend PLN | 6000 | 8000 | 10000 | 24000 |
-| Aktywne direct_web według utworzenia | 30 | 40 | 50 | 120 |
-| Wszystkie rezerwacje według utworzenia | 170 | 200 | 230 | 600 |
-| Aktywne wszystkie kanały | 130 | 160 | 190 | 480 |
-| Anulowane | 30 | 30 | 30 | 90 |
-| Pozostałe statusy | 10 | 10 | 10 | 30 |
-
-Między blokiem 1 i 2 budżet i aktywne online rosną o 33,33%; między 2 i 3 o 25%. Koszt online pozostaje 500 PLN. To kontrolowany przykład, w którym wzrost rezerwacji przy wzroście budżetu nie dowodzi poprawy efektywności ani przyczynowości. W trzecim bloku można równocześnie zwiększyć ruch Meta i OTA, pozostawiając brak identyfikatora łączącego: aplikacja opisuje współwystępowanie.
-
-W obrębie każdego bloku generator ma rozdzielić całkowite liczby na dni metodą zachowującą sumę, z ustaloną kolejnością rozstrzygania reszt. Najpierw powstają spójne historie i statusy, następnie rozkłady zdarzeń i raportów; nie losujemy niezależnych tabel z pozornie zgodnymi sumami. Matryce dzienne i krzyżowe kampania × zgody × urządzenie są kolejnym projektem generatora, podlegającym tym sumom i ograniczeniom.
-
-## 8. Reguły spójności i kontrolowane braki
-
-1. Dokładnie 90 różnych metric_date w pokryciu bazowych źródeł; wszystkie czasy zdarzeń mieszczą się w zakresie lokalnym. Pobyt i loaded_at mogą wykraczać poza to okno.
-2. Żadna identyfikowalna sesja nie ma więcej niż jednego session_start w bazie; każde jej zdarzenie ma zgodny klucz, hotel i urządzenie. 1500 page_view bez klucza pozostaje oddzielną jednostką.
-3. Każdy purchase należy do jednej z 430 sesji step3_confirmation; step3 do step2, step2 do step1. W bazie występuje maksymalnie jeden zakup na sesję oraz pełna sekwencja etapów w sesji zakupowej; obserwowalność wcześniejszej historii wielosesyjnej jest oceniana osobno. Kolejne zdarzenia mają jawne różne timestampy, poza osobnym testem konfliktu.
-4. Kwota każdego z 65 purchase GA4 w wiedzy wspólnego scenariusza jest zgodna z wartością Profitroom w chwili utworzenia. Status późniejszej anulacji pochodzi wyłącznie z Profitroom. Wartości platformowe pozostają własnym raportem platformy.
-5. 810 rewizji daje 600 rezerwacji, nie 810. Cohort_bookings to suma rozłącznych statusów, active to confirmed+completed.
-6. Koszty składowych kampanii sumują się do źródeł i 60000 PLN. Raport zbiorczy Meta nie jest dodatkową kampanią. Rekord conversion nie dubluje kosztu delivery.
-7. Do aplikacji przechodzą wyłącznie zaobserwowane dowody; generator nie uzupełnia ukrytych transaction_id, zgód ani marketingowych źródeł.
-8. Zgoda nieznana, brak źródła i Direct to różne stany. Wzorce source/medium i grupy kanałów są jawne i wersjonowane.
-9. Kwoty są generowane w groszach. FLOAT64 w ecommerce odzwierciedla DDL, a późniejsza normalizacja NUMERIC zachowuje docelową kwotę groszową.
-10. Podstawowe pola techniczne są deterministyczne. Nowa rewizja scenariusza otrzymuje nową wersję, a nie zmienia znaczenia dotychczasowych ID bez śladu.
-11. Bazowe źródła są kompletne w sensie dostarczenia plików/rekordów zadeklarowanego seeda. To nie oznacza 100% pomiaru gości. Wiedza o 2500 niewidocznych wizytach pozostaje testową prawdą generatora, bez fikcyjnego licznika w widokach.
-12. Różnorodność cen jest uzgadniana z sumami kanałów i podzbiorów połączeń przed zapisaniem seeda; cena nie służy do identyfikacji rezerwacji.
+1. Demo obejmuje 90 lokalnych dni, PLN, Europe/Warsaw, WEB oraz stałe as_of_at i loaded_at z sekcji 1. Daty pobytu i importu są odrębne od daty utworzenia rezerwacji i zdarzenia.
+2. Powstają całkowicie nowe rekordy, identyfikatory, nazwy kampanii i rezerwacje. Dane referencyjne są wzorcem proporcji i skali; generator nie kopiuje klientów, numerów rezerwacji, adresów ani rekordów i dni rzeczywistych hoteli, ani mechanicznie ich nie powiela.
+3. Jednostki event, sesja, urządzenie, journey i rezerwacja pozostają rozdzielone. Własny model historii syntetycznych wymaga uzgodnienia, a raporty platform zachowują ich model, okno i podstawę daty.
+4. Meta i Google dostarczają odrębnych wyników platformowych; GA4 zachowania i lejka; Profitroom rezerwacji, kanału, wartości i anulacji. Spójność nie oznacza fikcyjnej ścieżki 1:1 przez wszystkie źródła.
+5. Każde źródło ma własne pokrycie obserwacji. Brak identyfikatora oznacza ograniczenie łączenia; Direct, Unassigned i brak danych są rozróżniane. Ukryta wiedza generatora służy testom, a nie dowodom dostępnym aplikacji.
+6. Wartości wspólnych, rzeczywiście zaprojektowanych i zweryfikowanych par podlegają regułom uzgodnionego linkowania. Brak wiarygodnej wartości GA4 pozostaje brakiem, a nie automatycznie wartością Profitroom.
+7. Kwoty powstają i są obliczane w groszach. FLOAT64 w GA4 odzwierciedla istniejący DDL; dokładne kwoty i rozkłady są przedmiotem projektu generatora.
+8. Koszt emisji jest liczony raz na kampanię i dzień, niezależnie od liczby akcji konwersji. Sumy kampanii i źródeł muszą odpowiadać zatwierdzonym dokładnym celom, zamiast historycznemu 60000 PLN.
+9. Identyfikatory, sortowanie, seed i wersja są deterministyczne. Hotel jest częścią każdego połączenia. Nowa wersja algorytmu jest jawna, bez ukrytej zmiany znaczenia identyfikatorów.
+10. Kontrole schematu, dat, unikalności, sekwencji syntetycznych, braków i powtarzalności wynikną z uzgodnionego modelu. Pełne dostarczenie źródła nie oznacza pełnego pomiaru wszystkich gości.
 
 ## 9. Przypadki testowe — osobno od bazowych sum
 
-Kontrolowane braki z sekcji 4 i 6 są wliczone w bazę. Poniższe dodatkowe warianty awarii są odrębnymi uruchomieniami testowymi, a nie dodatkowymi rekordami bazowego scenariusza. Nie wymagają osobnych tabel ani datasetu ops.
+Liczebności kontrolowanych braków wymagają ponownego uzgodnienia zgodnie z sekcją 6. Poniższe dodatkowe warianty awarii są odrębnymi uruchomieniami testowymi, a nie dodatkowymi rekordami bazowego scenariusza. Nie wymagają osobnych tabel ani datasetu ops.
 
 | Przypadek | Oczekiwane zachowanie późniejszej aplikacji/przetwarzania |
 |---|---|
@@ -329,35 +368,39 @@ Zmiana czasu nie przypada w ustalonych 90 dniach. Test DST z kontraktu wymaga od
 
 ## 10. Decyzje S01–S09 i terminy dalszej realizacji
 
-Akceptacja obejmuje całość potrzebną do przygotowania generatora GA4; żadna z poniższych odroczonych części nie blokuje jego opracowania. Wspólna historia i identyfikatory poprzedzają odwzorowanie kolejnych źródeł, a gotowe DDL pozostałych tabel nie są wymagane dla GA4.
+Wersja 0.3 zawiera referencje wszystkich czterech źródeł i cele orientacyjne. Gotowość generatora wymaga ponownego uzgodnienia zależności poniżej; historyczna akceptacja 0.2 nie zatwierdza ich nowych wartości.
 
-| ID | Rozstrzygnięte dla generatora GA4 | Pozostała decyzja i termin |
+| ID | Zachowane lub skalibrowane | Do uzgodnienia i termin |
 |---|---|---|
-| S01 | Zakres, as_of_at, dzienne loaded_at, strefa i niezależność od zegara | Produkcyjny harmonogram/cutoff — przed automatycznym importem, Q03/O04 |
-| S02 | hotel_demo_001 i pierwszy scenariusz jednego hotelu | Mapowanie Supabase — przed integracją aplikacji; drugi hotel — przed testami izolacji hma_core/aplikacji |
-| S03 | 13 zdarzeń, 116015 rekordów, urządzenia, sesje, kanały, bilans Booking Engine, kwoty i rozkład bloków | Podział pozostałych kanałów/statusów i historia 810 rewizji — przed generatorem Profitroom |
-| S04 | Cztery kampanie, ich tożsamości i role, sesje/kliknięcia oraz demonstracyjny koszt 60000 PLN | Nowy bilans konwersji i wartości, model/okno i data platform — przed generatorami Meta/Google; kwalifikacja płatna i zakres jakości — przed linked KPI w hma_core/regułach |
-| S05 | privacy_info, maskowanie, 32+18+14 braków aktywnych purchase, rozdzielenie wiedzy generatora i aplikacji | Progi jakości/pewności i mianowniki płatnego pokrycia — przed jakością i regułami; produkcyjna retencja — przed realnymi danymi |
-| S06 | Sekwencja etapów, unikalność w sesji, engaged_view, form_submit, 30-dniowa historia urządzenia | Lifecycle journey, kohorty i wiele wyników — przed agregacją lejka/ścieżek hma_core, Q04/O05 |
-| S07 | scenario_id, stream_id, seed, generator_version, .example, sortowanie, deterministyczne ID i grosze | Brak otwartej decyzji biznesowej przed GA4; implementacja algorytmu i test powtarzalności w osobnym zadaniu generatora |
-| S08 | Wspólna tożsamość, data i kwota 65 zakupów; maskowanie 50/8/7 | DDL Meta/Google/Profitroom, adapter publicznego mapowania i szczegóły rewizji — przed odpowiednim źródłem; fizyczne połączenia — przed hma_core |
-| S09 | Kontrole bazowe schematu, sum, unikalności, dat, kolejności i powtarzalności; awarie poza bazą | Wybór i implementacja dodatkowych wariantów — przy testach odpowiednich źródeł i hma_core |
+| S01 | Hotel, zakres 90 dni, as_of_at, loaded_at, strefa i stały zegar | Produkcyjny harmonogram przed automatycznym importem |
+| S02 | hotel_demo_001 i syntetyczne przestrzenie ID | Mapowanie Supabase przed integracją; drugi hotel przed testami izolacji |
+| S03 | Referencja GA4 i orientacyjne cele sekcji 4 | engaged_view, click_mail, dokładne sumy, liczba urządzeń/sesji, brakujące 1,32 p.p. kanałów i ich rozkład, urządzenia — przed generatorem GA4 |
+| S04 | Meta ×18; Google ×10/3, mix 60/35/5; 0,01 PLN zaakceptowane jako zaokrąglenie | Dokładne rozkłady kampanii/dni, ID i mapowanie GHA, model/okno/data raportów — przed generatorami reklam; zakres kwalifikacji i KPI — przed regułami |
+| S05 | Braki pomiaru są odrębne od zer i Direct | Zgody, maskowanie i liczby braków przed generatorem; pokrycie, progi i pewność przed regułami |
+| S06 | 30-dniowe okno; lejek referencyjny jest ilorazem eventów | Syntetyczne sekwencje i wielokrotność zdarzeń przed generatorem; lifecycle i kohorty journey przed hma_core |
+| S07 | scenario_id, stream_id, seed, generator_version, .example i sortowanie | Algorytm, dokładne liczebności i test powtarzalności przed generowaniem |
+| S08 | Referencja Profitroom, nieanulowane/anulowane, orientacyjne cele sekcji 5 | Dokładny bilans i kanały, ewentualne syntetyczne confirmed/completed, historia rewizji, model purchase–booking, liczby i wartości par — przed zależnymi generatorami; agregaty nie rozstrzygają relacji 1:1 |
+| S09 | Zasady kontroli i osobne warianty awarii | Nowe oczekiwane wyniki testów po uzgodnieniu modelu; implementacja przy odpowiednich źródłach i hma_core |
 
-O11 (status dzienny a bramka okresu) i O12 (spójne agregaty) pozostają odłożone do hma_core. Uprawnienia, konfiguracja Supabase, AI i ochrona kosztów zachowują ustalenia kontraktu. Ich implementacja jest odrębnym zadaniem.
+O11 i O12 pozostają odłożone do hma_core. Uprawnienia, konfiguracja Supabase, AI i ochrona kosztów zachowują ustalenia kontraktu. Ich implementacja jest odrębnym zadaniem.
 
 ## 11. Akceptacja scenariusza i późniejsze kontrole
 
-- [x] Właścicielka zaakceptowała scenariusz v1 oraz decyzje potrzebne przed generatorem GA4.
-- [x] Ustalono zakres 90 dni, PLN, Europe/Warsaw, WEB, hotel_demo_001 i stały czas stanu/ładowania.
-- [x] Ustalono 13 zdarzeń i sumę 116015; liczby zdarzeń, sesji, urządzeń i rezerwacji są odrębnymi jednostkami.
-- [x] Uzgodniono bilans 65 purchase: 56 aktywnych i 9 anulowanych; połączenia 50/8/7.
-- [x] Uzgodniono 120 aktywnych Booking Engine, pokrycia 56/120 i 44/120 oraz braki 32+18+14.
-- [x] Uzgodniono 600 rezerwacji Profitroom: 480 aktywnych, 90 anulowanych, 30 innych statusów; Booking Engine 150, pozostałe kanały 450.
-- [x] Uzgodniono wyłącznie syntetyczne identyfikatory, adresy, kwoty i historie, bez kopiowania danych klientów.
-- [x] Odroczone decyzje mają terminy i nie blokują generatora GA4.
-- [ ] Generator i testy potwierdzają schemat, dokładne sumy, daty, kolejność, unikalność, maskowanie i powtarzalność.
-- [ ] Przyszłe źródła odtwarzają wspólne kwoty i identyfikatory; 810 rewizji zachowuje 600 rezerwacji.
-- [ ] hma_core i reguły zachowują pięć warunków linked ROAS, NULL, UNKNOWN i odrębność jednostek journey/sesja.
-- [ ] Osobne testy izolacji dwóch hoteli, DST i awarii zostały wykonane w odpowiednich etapach.
+- [x] Zachowano hotel, zakres 90 dni, PLN, Europe/Warsaw, WEB i stały czas.
+- [x] Zakończono i zaakceptowano kalibrację GA4 za 54 dni oraz orientacyjne cele ×10/3.
+- [x] Zakończono i zaakceptowano kalibrację Profitroom za 54 dni oraz orientacyjne cele ×10/3.
+- [x] Zakończono i zaakceptowano kalibrację Meta Ads za 10 dni oraz orientacyjne cele ×18.
+- [x] Zakończono i zaakceptowano kalibrację Google Ads za 54 dni, cele ×10/3 i mix 60% / 35% / 5%.
+- [x] Potwierdzono spójność interpretacji czterech źródeł: wyniki platformowe, zachowanie GA4 i kanoniczne rezerwacje Profitroom.
+- [x] Właścicielka zaakceptowała scenariusz 0.3 jako podstawę kolejnych prac.
+- [x] Rozdzielono eventy od sesji i rezerwacji oraz nieanulowane od niepotwierdzonych statusów active/confirmed/completed.
+- [x] Wycofano stare liczebności, powiązania i KPI z części obowiązującej; pozostają historią 0.2.
+- [ ] Uzgodniono dokładne liczebności, kanały, urządzenia, zgody i zdarzenia bez referencji.
+- [ ] Uzgodniono nowy model linkowania, statusów i wartości oraz oczekiwane pokrycie, zamiast historycznego bilansu 65/50/8/7.
+- [ ] Uzgodniono zależne KPI, w tym linked bookings, pokrycie, linked ROAS i koszt rezerwacji.
+- [ ] Przygotowano i zweryfikowano DDL pozostałych tabel oraz hma_app; załadowano dane demo.
+- [ ] Generator i testy potwierdzają zatwierdzony model, sumy, daty, unikalność, braki i powtarzalność.
+- [ ] hma_core i reguły zachowują pięć warunków linked ROAS, NULL, UNKNOWN i rozdzielenie jednostek.
+- [ ] Osobne testy izolacji hoteli, DST i awarii wykonano w odpowiednich etapach.
 
-Dokument jest zaakceptowaną podstawą osobno zleconego generatora GA4 i późniejszego spójnego odwzorowania czterech źródeł. W tym kroku zaktualizowano wyłącznie dokumentację; DDL, generator, dane, Supabase, aplikacja i zasoby Google Cloud pozostają bez zmian.
+Scenariusz danych syntetycznych w wersji 0.3 został zaakceptowany. Kalibracja GA4, Profitroom, Meta Ads i Google Ads stanowi podstawę projektowania schematów tabel i generatora. Otwarte kwestie pozostają celowo odroczone do odpowiednich dalszych etapów wskazanych w sekcji 10. Akceptacja scenariusza nie oznacza gotowości generatora ani tabel demo, wykonania modelu linkowania, zależnych KPI, hma_core, hma_app, ładowania danych ani testów końcowych.
