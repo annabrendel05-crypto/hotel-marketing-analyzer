@@ -1,0 +1,36 @@
+-- AdCreatives_demo
+CREATE TABLE `hotel-marketing-analyzer-demo.meta_ads.AdCreatives_demo`
+(
+  ID STRING,
+  Target STRING,
+  Name STRING,
+  ApplinkTreatment STRING,
+  Body STRING,
+  CallToActionType STRING,
+  EffectiveInstagramMediaId STRING,
+  ImageHash STRING,
+  ImageUrl STRING,
+  InstagramPermalinkUrl STRING,
+  InstagramUserId STRING,
+  LinkOgId STRING,
+  LinkUrl STRING,
+  ObjectId STRING,
+  ObjectStoryId STRING,
+  ObjectType STRING,
+  ObjectUrl STRING,
+  PageId STRING,
+  ProductSetId STRING,
+  RunStatus STRING,
+  SourceInstagramMediaId STRING,
+  TemplateUrl STRING,
+  ThumbnailUrl STRING,
+  Title STRING,
+  UrlTags STRING,
+  AdLabels STRING,
+  ObjectStorySpecLinkData JSON,
+  ObjectStorySpecPhotoData JSON,
+  ObjectStorySpecVideoData JSON,
+  ObjectStorySpecTextData JSON,
+  ObjectStorySpecTemplateData JSON
+)
+PARTITION BY DATE(_PARTITIONTIME);
