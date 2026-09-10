@@ -31,18 +31,18 @@ Wszystkie 90 dni mają zadeklarowany zakres źródeł, również dni z zerowym w
 |---|---|
 | `ga4.events_demo` | Jeden zaobserwowany syntetyczny event; zachowanie, intencje i etapy lejka. Istniejący DDL pozostaje bez zmian |
 | `meta_ads.meta_ads_daily` — planowana | Dzienny wynik kampanii; koszt delivery oddzielony od wybranej akcji conversion zgodnie z projektem |
-| `google_ads.google_ads_daily` — planowana | Analogiczny raport Google, własny model i okno; brand jest rozłączną klasą kampanii płatnych |
+| `google_ads.Campaign_demo`, `CampaignBasicStats_demo`, `CampaignConversionStats_demo`, `Customer_demo` | Source query schema 1:1 widoków ads_* w my-story-sopot.my_story_sopot_dataset: 27/17/20/9 nullable pól; koszt w metrics_cost_micros INT64, konwersje w wierszach działań FLOAT64, _LATEST_DATE i _DATA_DATE zachowane. Role kampanii są konfiguracją scenariusza, nie dodatkowymi kolumnami source. Kalibracja pozostaje bez zmian. |
 | `profitroom.reservations_demo` | Dokładne odwzorowanie 13 nullable pól rzeczywistej tabeli źródłowej; nowe dane syntetyczne, bez metadanych i pól canonical |
 
 Osobny eksport Booking Engine pozostaje opcjonalny i nie jest potrzebny do tego scenariusza: wszystkie zdarzenia zachowania Booking Engine dostarcza GA4. Dane konfiguracyjne i progi nadal należą do Supabase. Ten dokument nie tworzy tam ustawień.
 
 | Identyfikator | Obowiązująca wartość lub wzorzec |
 |---|---|
-| hotel_id | **USTALONE:** `hotel_demo_001` we wszystkich czterech źródłach |
+| hotel_id | **USTALONE:** `hotel_demo_001` identyfikuje wspólny scenariusz; dla Google Ads jest w konfiguracji/manifeście, poza source schema |
 | stream_id | `demo_web_001`, platform=WEB |
 | scenario_id | `baltic_horizon_2026_v1` |
 | generator_version / stałe ziarno | `ga4-demo-generator-v1` / `20260601`; przyszły algorytm i kolejność generowania muszą być wersjonowane |
-| Konto Meta / Google | `demo_meta_account_001` / `demo_google_account_001` |
+| Konto Meta / Google | `demo_meta_account_001` / `demo_google_account_001` jako alias konfiguracji; source Google customer_id ma syntetyczną wartość INT64 |
 | Kampanie | `demo_meta_discovery_001`, `demo_meta_packages_002`, `demo_google_brand_001`, `demo_google_general_002` |
 | Grupy reklam Google | `demo_google_brand_group_001`, `demo_google_general_group_001` |
 | user_pseudo_id | Syntetyczny prefiks `demo_browser_`; liczba urządzeń i braki identyfikatorów do uzgodnienia; dawny limit 12000 jest historyczny |
@@ -210,7 +210,7 @@ Zaakceptowany mix budżetu jest lekko wygładzony względem referencji, zamiast 
 5. Przyszły generator tworzy nowe dane oraz realistyczne, nieregularne wahania dzienne przy stałym seedzie. Agregaty referencyjne służą skali i proporcjom, zamiast mechanicznego powielania pojedynczych dni źródłowych. Wyniki atrybucyjne dnia nie muszą tworzyć chronologicznego lejka jednej osoby.
 6. Trzy zakupy w 54 dniach to mała próba. Akceptacja kalibracji określa scenariusz demo, a ocena skuteczności nadal uwzględnia jakość, liczebność i progi hotelu. Model, okno i podstawa daty raportowania wymagają określenia przed generatorem Google Ads.
 
-**Przejście z bazy 0.2:** ta sekcja zastępuje dawny model dwóch kampanii Google, 24 000 PLN kosztu, 120 000 wyświetleń i 6 000 kliknięć. Obowiązują trzy grupy Google: Search Generic, Brand i GHA, obok dwóch ról Meta. Dotychczasowe syntetyczne ID Brand i kampanii ogólnej można zachować; ID GHA i jego mapowanie do GA4 zostaną uzgodnione przed generatorami, bez kopiowania identyfikatorów referencji.
+**Przejście z bazy 0.2:** ta sekcja zastępuje dawny model dwóch kampanii Google, 24 000 PLN kosztu, 120 000 wyświetleń i 6 000 kliknięć. Obowiązują trzy grupy Google: Search Generic, Brand i GHA, obok dwóch ról Meta. Dotychczasowe tekstowe ID Brand i kampanii ogólnej można zachować jako aliasy konfiguracji; source Google campaign_id wymaga syntetycznych wartości INT64; ID GHA i jego mapowanie do GA4 zostaną uzgodnione przed generatorami, bez kopiowania identyfikatorów referencji.
 
 Wiersze starego Google w sekcjach 2–3 stanowią historyczną bazę 0.2. Aktualne liczebności referencyjne GA4 i Profitroom opisują sekcje 4–5; rozdzielenie syntetycznego ruchu GHA wymaga uzgodnienia. Historyczne KPI znajdują się w sekcji 6. Kalibracje czterech źródeł i scenariusz 0.3 zostały zaakceptowane; szczegóły zależności pozostają odroczone zgodnie z sekcją 10.
 

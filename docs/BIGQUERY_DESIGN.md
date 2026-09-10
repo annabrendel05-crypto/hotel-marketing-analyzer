@@ -82,7 +82,7 @@ Demo jest oddzielone od `creatic-503805` i nie otrzymuje automatycznego dostępu
 |---|---|---|
 | `ga4` | Źródłowe zdarzenia GA4 z zachowaniem zagnieżdżeń | events_demo; dostęp procesu, bez bezpośredniego odczytu aplikacji |
 | `meta_ads` | Źródłowe koszty i wyniki Meta | meta_ads_daily; własna polityka konwersji |
-| `google_ads` | Źródłowe koszty i wyniki Google Ads | google_ads_daily; odrębność od Organic |
+| `google_ads` | Źródłowe koszty i wyniki Google Ads | Campaign_demo, CampaignBasicStats_demo, CampaignConversionStats_demo, Customer_demo; odrębność od Organic |
 | `profitroom` | Surowe rezerwacje w schemacie rzeczywistego źródła | reservations_demo: 13 nullable pól 1:1; canonical i ewentualny osobny eksport zdarzeń są odrębne |
 | `hma_core` | Czyszczenie, ujednolicanie, deduplikacja i łączenie | Tabele oczyszczone, łączenie źródeł i pomocnicze agregaty; bez rejestrów operacyjnych; dostęp przetwarzania |
 | `hma_app` | Końcowe, bezpieczne widoki aplikacyjne | Sześć widoków daily; serwerowy odczyt po autoryzacji hotelu |
@@ -169,11 +169,20 @@ To projekt wejścia adapterów i generatora syntetycznego, a nie deklaracja, że
 - Pola: `account_id STRING`, `campaign_id STRING`, `campaign_name STRING?`, `source_report_date DATE`, `record_type STRING`, `source_breakdown_key STRING`, `currency_code STRING?`, `ad_spend NUMERIC?`, `impressions INT64?`, `outbound_clicks INT64?`, `click_type STRING?`, `conversion_action STRING?`, `platform_conversions NUMERIC?`, `platform_revenue NUMERIC?`, `platform_attribution_model STRING?`, `platform_attribution_window STRING?`, `platform_date_basis STRING?`.
 - Delivery ma koszt jeden raz. Jeśli eksport powtarza koszt przy akcjach, adapter zachowuje payload, a do modelu delivery wybiera jeden koszt kontrolowany sumą. Dodatkowe breakdowny są odrębnym zakresem importu, z kontrolą pokrywania sum.
 
-### 5.2. `google_ads.google_ads_daily`
+### 5.2. Google Ads — cztery tabele source query schema 1:1
 
-- Grain, klucze, kolumny i klaster jak w Meta, lecz dane pochodzą z Google Ads; odrębna tabela zachowuje odrębną semantykę platformy.
-- Dodatkowo `cost_micros INT64?` zachowuje źródłową jednostkę, jeśli używa jej wybrany eksport. Adapter wyznacza `ad_spend NUMERIC` zgodnie z opisem jednostki; dokładny format importu wymaga O03.
-- Wybrana akcja zakupowa, okno i model są jawne. Google Organic pochodzi z obserwacji ruchu, a nie z kosztów Google Ads.
+Wzorcem są widoki `my-story-sopot.my_story_sopot_dataset.ads_*_6604551350`, a nie techniczne tabele p_ads_*. Demo materializuje ich strukturę odczytu jako tabele:
+
+| Tabela w google_ads | Wzorzec widoku | Liczba pól |
+|---|---|---|
+| Campaign_demo | ads_Campaign_6604551350 | 27 |
+| CampaignBasicStats_demo | ads_CampaignBasicStats_6604551350 | 17 |
+| CampaignConversionStats_demo | ads_CampaignConversionStats_6604551350 | 20 |
+| Customer_demo | ads_Customer_6604551350 | 9 |
+
+Nazwy, kolejność i typy są źródłowe; wszystkie pola nullable. `_LATEST_DATE` i `_DATA_DATE` pozostają polami DATE. `metrics_cost_micros` pozostaje INT64, bez przeliczania na PLN w source. Konwersje są FLOAT64 i zachowują `segments_conversion_action`, `segments_conversion_action_category`, `segments_conversion_action_name`, `metrics_conversions` i `metrics_conversions_value`. Schemat zachowuje segmenty źródłowe; nie zakłada jednego wiersza na dzień kampanii. Koszt z BasicStats nie jest powielany przez łączenie z wieloma akcjami ConversionStats.
+
+To zastępuje wcześniejszy projekt google_ads_daily / daily_campaign_stats_demo. Wspólne kanoniczne pola i metadane opisane wcześniej nie są kolumnami tych czterech tabel. Dane hotelu i scenariusza pozostają poza source; przyszłe mapowanie należy do osobnej warstwy. Nie dodano partycjonowania ani clusteringu. Definicje w plikach 003a–003d są lokalne; nie zmieniono zasobów chmurowych. Kalibracja i rozdzielenie wyników platformowych pozostają bez zmian.
 
 ### 5.3. `ga4.events_demo` — projekt architektoniczny
 
