@@ -16,12 +16,12 @@ Projekt obejmuje generowanie, walidację i przyszły lokalny eksport. Linkowanie
 
 ### 1.1. Rozbieżności dokumentacyjne wymagające jawnego traktowania
 
-- Aktualne fizyczne cele to `ga4.events_demo`, `meta_ads.daily_campaign_stats_demo`, `google_ads.daily_campaign_stats_demo`, `profitroom.reservations_demo`. Starsze nazwy i rewizje w projekcie BigQuery oraz sekcji 2 scenariusza nie są schematem wyjściowym generatora. Obowiązują cztery zaakceptowane DDL, w tym jeden aktualny stan Profitroom.
+- Aktualne fizyczne cele to `ga4.events_demo`, `meta_ads.daily_campaign_stats_demo`, `google_ads.daily_campaign_stats_demo`, `profitroom.reservations_demo`. Starsze nazwy i rewizje w projekcie BigQuery oraz sekcji 2 scenariusza nie są schematem wyjściowym generatora. Profitroom po doprecyzowaniu właścicielki odwzorowuje 13 nullable pól rzeczywistego źródła; lokalny DDL zastępuje wcześniejszy model 22 pól, bez wykonania zmiany w chmurze.
 - Aktualne liczebności pochodzą z sekcji 3.1–5 scenariusza 0.3. Historyczne 116015 eventów, 18000 sesji, 600 rezerwacji i pokrycia ze starszego projektu nie są celami generatora.
 - **G01 — ZAAKCEPTOWANE:** generator korzysta z jednego wspólnego start_date w konfiguracji oraz dokładnie 90 kolejnych dni dla wszystkich źródeł. Konkretny start_date zostanie ustalony przy konfiguracji implementacji. Wcześniejsze daty w scenariuszu pozostają zapisem tego dokumentu; niniejsza późniejsza decyzja nie przenosi ich automatycznie do konfiguracji generatora i nie zmienia dokumentu scenariusza.
-- `booking_engine` jest kodem źródłowym Profitroom. `direct_web` jest pojęciem kontraktu analitycznego; przyszły adapter określi mapowanie. `is_cancelled=false` oznacza nieanulowaną, bez automatycznego statusu active/confirmed/completed.
+- W źródłowym `Kanał rezerwacji` demo używa wartości Booking.com, Expedia i Booking Engine. Kody canonical, w tym direct_web, należą do przyszłego adaptera. `Data anulacji IS NULL` oznacza brak informacji o anulowaniu, a nie potwierdzenie aktywnego statusu.
 
-Istniejące dokumenty i DDL pozostają bez zmian. Rozbieżności nie blokują projektu architektury; decyzje potrzebne konkretnemu generatorowi są bramką przed jego uruchomieniem.
+Pozostałe ustalenia zachowują zakres. Rozbieżności nie blokują projektu architektury; decyzje potrzebne konkretnemu generatorowi są bramką przed jego uruchomieniem.
 
 ## 2. Wspólna konfiguracja i wynik
 
@@ -166,21 +166,24 @@ Bez wiarygodnego pomiaru purchase_revenue pozostaje NULL. Generator nie tworzy t
 
 **Targety GA4 dotyczą końcowego eksportowanego zbioru po wszystkich ograniczeniach i maskowaniu.** Braki identyfikatorów nie mogą obniżyć końcowych liczników poza tolerancję G02. Walidacja działa po ograniczeniu do okna i finalnej reprezentacji obserwacji. Generator nie dopisuje sztucznych eventów ostatniego dnia do domknięcia sum; wynik poza tolerancją podlega G07.
 
-## 6. Profitroom — jeden aktualny stan
+## 6. Profitroom — source schema 1:1
 
-Cele orientacyjne: około 277 rezerwacji = 230 nieanulowanych + 47 anulowanych; około 573062 PLN wartości nieanulowanych; około 37 wszystkich Booking Engine. Kanały: booking_com, expedia, booking_engine. **G05 — ZAAKCEPTOWANE:** prosty model booking_channel × is_cancelled. Agregaty 50/40, 22/20, 11/9 z referencji służą proporcjom; wynik zachowuje tolerancje G02 i dokładną spójność własnego bilansu.
+**USTALONE: source schema ≠ canonical schema.** `profitroom.reservations_demo` ma dokładnie te same 13 pól, typy, nullable i kolejność co rzeczywista tabela źródłowa wskazana przez właścicielkę. Różni się wyłącznie syntetyczną zawartością. Pełny schemat zawiera DDL `004_create_profitroom_reservations_demo.sql`.
 
-**G05 — ZAAKCEPTOWANA procedura prostego modelu demo:**
+Przepływ docelowy: source Profitroom → adapter / canonical reservations → hma_core → hma_app. Adapter, canonical i dalsze warstwy pozostają poza implementacją generatora.
 
-1. Wygenerować liczbę utworzeń w ramach tolerancji kalibracyjnej i rozłożyć ją po dniach wspólnym sygnałem popytu i niezależnym szumem; dzień z zerem jest dozwolony.
-2. Przydzielić kanał i anulację w prostym modelu booking_channel × is_cancelled, zgodnie ze skalą i proporcjami kalibracji. Anulacje korzystają z osobnego sygnału, nie z wyników GA4 lub reklam.
-3. Wylosować ograniczony czas wyprzedzenia pobytu, długość i liczbę gości. Parametry realistycznych rozkładów zostaną zapisane w konfiguracji implementacji, bez nowych sztywnych celów. Arrival może wypaść po oknie sprzedaży; departure jest późniejsza. Nights wylicza się z dat, bez dodatkowej kolumny.
-4. Wygenerować wartość brutto po rabatach z mieszanki ofert i liczby nocy, z ograniczonym rozrzutem. Skala ×2 zwiększa wolumen hotelu, nie cenę rezerwacji. Sprawdzić sumę nieanulowanych względem orientacyjnego celu i tolerancji, zachowując spójność kwot z ofertami. Wynik w tolerancji pozostaje bez korekty; kwoty nadal obliczamy dokładnie w groszach.
-5. Dla anulowanych zachować wartość sprzed anulacji. Znane cancelled_at mieści się między utworzeniem a as_of_at; nieanulowane mają NULL. Brak znanej daty pozostaje NULL zgodnie z DDL.
+Cele pozostają orientacyjne: około 277 rekordów, 47 z datą anulacji, 230 bez informacji o anulowaniu, około 37 Booking Engine i około 573062 PLN wartości rekordów bez daty anulacji. Określenie „nieanulowane” w kalibracji oznacza ten ostatni podzbiór, a nie confirmed/completed/active.
 
-Klucz hotel_id + reservation_id jest unikalny w całym zestawie. Stan końcowy zastępuje poprzedni, bez rewizji, statusów operacyjnych i linkowania. Wartość nieanulowanych liczona jest tylko przy is_cancelled=false. Nie jest to wartość aktywnych rezerwacji według kontraktu.
+**G05 — model danych źródłowych:**
 
-**G01 — ZAAKCEPTOWANE dla Profitroom:** reservation_created_at należy do wspólnego 90-dniowego okna raportowego. arrival_date i departure_date mogą wykraczać poza to okno. as_of_at reprezentuje deterministyczny stan danych scenariusza, a nie rzeczywisty moment uruchomienia generatora. loaded_at i pozostałe wartości czasowe wynikają z konfiguracji i seeda, z zachowaniem relacji czasowych DDL, w tym as_of_at <= loaded_at. Konkretne parametry zegara zostaną zapisane przy konfiguracji implementacji; ta decyzja nie zatwierdza dodatkowego harmonogramu importów ani równości loaded_at i as_of_at.
+1. Rozłożyć utworzenia na 90 dni przy wspólnym sygnale i niezależnym szumie; dzień bez rekordu jest poprawny.
+2. Wypełnić `Kanał rezerwacji` wartościami Booking.com, Expedia, Booking Engine. To słownik demo, nie ograniczenie SQL. Anulowanie jest reprezentowane wyłącznie przez `Data anulacji`; NULL oznacza brak informacji o anulowaniu.
+3. `Data przyjazdu` i `Data wyjazdu` wyznaczają długość pobytu. Generator v1 stosuje wyprzedzenie 1–90 dni, pobyty 2–5 nocy i 1–2 pokoje. Są to parametry danych demo, nie reguły struktury źródła. Pobyty mogą wykraczać poza okno. Liczba gości nie jest kolumną źródła.
+4. `Oferta` i `Typ pokoju` pochodzą z małych, całkowicie syntetycznych słowników. `Wartość` zależy od typu, liczby pokoi i nocy. Korekta poza tolerancją jest proporcjonalna, ograniczona współczynnikiem 0,8–1,2; wynik w tolerancji pozostaje bez korekty.
+5. `Zapłacono` i `Pozostało do zapłaty` są przydzielane po korekcie wartości. Obliczenia w groszach zachowują dokładne Zapłacono + Pozostało do zapłaty = Wartość; eksport używa liczb FLOAT64 zgodnie ze źródłem. W demo są rezerwacje bez wpłaty, z zaliczką i opłacone. Dla anulowanych wartość jest zachowana, wpłata może być zerowa lub częściowa; to syntetyczny stan płatności, nie księga zwrotów ani dowód wymagalnej należności.
+6. `Kod rezerwacji` jest syntetyczny i unikalny w zestawie. Wszystkie 13 pól źródła dopuszczają NULL; bazowy generator wypełnia pozostałe pola poza datą anulacji. Walidacja schematu nullable jest oddzielona od kompletności bazowego demo.
+
+**G01:** `Data rezerwacji` należy do wspólnego okna, w Europe/Warsaw. Dzień raportowy i długość pobytu są wyliczane w pamięci. Stan scenariusza i czas eksportu są deterministyczne i opisane wyłącznie w manifeście. Hotel, scenario_id, wersje i inne metadane techniczne pozostają poza rekordami źródłowymi. Tabela nie zawiera metric_date, is_cancelled, statusów, pól linkage ani historii rewizji. Znana data anulacji mieści się między utworzeniem a momentem stanu scenariusza, nie później niż syntetyczny początek pobytu.
 
 ## 7. Google Ads
 
@@ -234,9 +237,9 @@ Konwersje mogą być ułamkowe zgodnie z DDL. Nie obowiązuje dzienny wymóg ste
 - Hotel, stream i ustalone konta/kampanie zachowują ID z konfiguracji; są deterministyczne jako stałe scenariusza. Nowe ID GHA i nazwy powstają syntetycznie zgodnie z G06.
 - Reservation, browser, event i raw_row otrzymują prefiks demo oraz skrót przestrzeni seed/scenario/source i stabilny indeks. Walidator sprawdza kolizje. Zmiana seeda zmienia rekordowe ID, a nie tożsamość hotelu.
 - ga_session_id ma bezpieczny zakres INT64 i jednoznaczność w kluczu z urządzeniem; nie tworzymy nieseedowanych UUID.
-- batch_id zawiera scenario, źródło, dzień oraz deterministyczny skrót konfiguracji/wersji, zamiast czasu wykonania. Nie rozszerza klucza biznesowego.
-- Sortowanie: GA4 po metric_date, event_timestamp, demo_event_id; reklamy po kluczu logicznym; Profitroom po metric_date, hotel_id, reservation_id. Pola JSON i tablice event_params mają stałą kolejność.
-- Kwoty są całkowitymi groszami podczas obliczeń; NUMERIC eksportowane jako dokładne reprezentacje dziesiętne. INT64 i timestampy mają jawny format. GA4 FLOAT64 dla kwoty używane dopiero po ewentualnej akceptacji generowania wartości.
+- batch_id, tam gdzie występuje w DDL, zawiera scenario, źródło, dzień i skrót wersji. Profitroom source nie otrzymuje batch_id; identyfikowalność pliku zapewnia manifest i jego hash.
+- Sortowanie: GA4 po metric_date, event_timestamp, demo_event_id; reklamy po kluczu logicznym; Profitroom po lokalnym dniu Data rezerwacji i Kod rezerwacji w obrębie hotelu wskazanego w manifeście; kolejność 13 pól NDJSON odpowiada ordinal positions źródła. Pola JSON i tablice event_params mają stałą kolejność.
+- Kwoty są całkowitymi groszami podczas obliczeń; NUMERIC eksportowane jako dokładne reprezentacje dziesiętne. INT64 i timestampy mają jawny format. Profitroom eksportuje kwoty jako FLOAT64 po obliczeniach w groszach; brak równości binarnej FLOAT64 nie zmienia kontroli groszowej. GA4 FLOAT64 dla kwoty używane dopiero po ewentualnej akceptacji generowania wartości.
 - GA4 nie ma kolumn contract_version/scenario_version ani as_of_at: te informacje trafiają do manifestu. Nie dodajemy pól spoza DDL. ingest_date jest datą UTC loaded_at.
 
 Proponowany NDJSON zachowuje zagnieżdżone STRUCT/ARRAY GA4. Serializator ma ścisłą listę dozwolonych pól na podstawie DDL. Lokalne logi czasu wykonania, ścieżki absolutne i timestamp bieżący pozostają poza deterministycznym manifestem.
@@ -282,7 +285,7 @@ Liczby eventów i rezerwacji pozostają całkowite. Wygenerowane nieanulowane + 
 - Metoda największych reszt lub analogiczna procedura może rozdzielać wartości całkowite wyłącznie w dozwolonych komórkach, z kontrolą ograniczeń także po zaokrągleniu.
 - Końcowe wartości są nieujemne, mają typy zgodne z DDL i spełniają ograniczenia logiczne źródła. Ograniczenie wag przed normalizacją nie zastępuje kontroli końcowych wartości.
 - Maska emisji i dopuszczalność raportowania konwersji są osobne. Brak emisji nie otrzymuje kosztu; aktywna kampania nie musi raportować każdej konwersji.
-- Kwoty NUMERIC reklam i Profitroom są nieujemne, obliczane w groszach i zaokrąglane deterministycznie. GA4 zachowuje istniejący typ FLOAT64 dla opcjonalnej wartości, zgodnie z DDL i G04. Wynik w tolerancji nie wymaga trafienia w cel co do grosza.
+- Kwoty reklam i Profitroom są nieujemne, obliczane w groszach i zaokrąglane deterministycznie; źródłowy eksport Profitroom ma FLOAT64, reklamy NUMERIC. GA4 zachowuje istniejący typ FLOAT64 dla opcjonalnej wartości, zgodnie z DDL i G04. Wynik w tolerancji nie wymaga trafienia w cel co do grosza.
 
 Parametry algorytmu, dokładna wersja runtime i ustawienia serializacji będą jawnie zapisane przy implementacji. Akceptacja zasad G07 nie oznacza wykonania kodu ani testów powtarzalności.
 
@@ -293,7 +296,7 @@ Parametry algorytmu, dokładna wersja runtime i ustawienia serializacji będą j
 | Konfiguracja | G01–G07 zaakceptowane; start_date i parametry implementacji jawnie uzupełnione w konfiguracji; 90 kolejnych lokalnych dni, wersje i skróty DDL; brak wartości historycznych jako celów |
 | Schemat | Dokładne kolumny, typy, wymagane pola, struktury i tablice z DDL; brak dodatkowych pól; rozróżnienie NULL/0 |
 | GA4 | Sumy eventów, pokrycie wszystkich dni, kolejność wybranego szablonu i budżety dni; wiele engagement dozwolone; mobile i kanały liczone na session_start; unikalne hotel_id/demo_event_id, parametry, mikrosekundy i projekcje dat; osobno urządzenia, sesje robocze i odtwarzalne |
-| Profitroom | Ocena celów około 277/230/47, około 37 Booking Engine i wartości nieanulowanych w tolerancjach; dokładna spójność wewnętrznego bilansu; unikalność hotel/reservation w całym okresie; daty pobytu i anulacji zgodne z DDL; anulacja zachowuje kwotę; brak operacyjnego statusu |
+| Profitroom | Ocena celów około 277/230/47, około 37 Booking Engine i wartości nieanulowanych w tolerancjach; dokładna spójność wewnętrznego bilansu; unikalność Kod rezerwacji w zestawie hotelu z manifestu; 13 pól source, zgodność dat i płatności w groszach; brak statusów i pól canonical |
 | Google | Wszystkie cele bazowe i kredyty osobno, koszt raz na klucz metric_date/hotel/customer/campaign, sumy grup i mix 60/35/5, zgodność polityki i brak arbitralnych zer telefonów |
 | Meta | Wszystkie cele bazowe, całkowite clicks/link/LPV, kanoniczne akcje, wartość osobno, unikalność metric_date/hotel/account/campaign; brak warunku purchases <= checkout |
 | Czas | 90 dni zdarzeń/metryk, import po obserwacji; as_of_at <= loaded_at tam, gdzie pole istnieje; pobyty poza oknem dozwolone; pokrycie Profitroom z manifestu także dla dni bez rezerwacji |
@@ -353,7 +356,7 @@ Wyjście będzie lokalnym artefaktem wyłączonym z Git w przyszłej implementac
 | G02 | **ZAAKCEPTOWANE:** orientacyjne cele kalibracyjne, zachowanie skali i naturalności; wynik w tolerancji bez sztucznego dopasowania; dokładna arytmetyka wewnętrzna | Propozycja tolerancji v1 w sekcji 10; szczegółowe parametry wymagają jawnego zapisania przy implementacji |
 | G03 | **ZAAKCEPTOWANE:** prosty model sesyjny i elastyczne archetypy, wielokrotne user_engagement, mobile około 87,45%, zachowane udziały kanałów z techniczną pulą other; engaged_view i click_mail bez targetów | Bez pełnego modelu osoby ani customer journey; parametry implementacyjne nie wprowadzają nowych celów; ewentualne generowanie niekalibrowanych eventów wymaga osobnego uzgodnienia |
 | G04 | **ZAAKCEPTOWANE:** pełny/ograniczony pomiar, jawne NULL, maskowanie odrębne od usuwania eventów, targety końcowego eksportu GA4 | Bez pełnego Consent Mode i sztucznego transaction_id lub linkowania; sekcja 5.3 |
-| G05 | **ZAAKCEPTOWANE:** prosty booking_channel × is_cancelled, realistyczne pobyty i kwoty, orientacyjne cele G02 | Bez statusów active/confirmed/completed, rewizji i linkowania; sekcja 6 |
+| G05 | **ZAAKCEPTOWANE:** prosty model kanału i obecności Data anulacji w źródle, realistyczne pobyty i kwoty, orientacyjne cele G02 | Bez statusów active/confirmed/completed, rewizji i linkowania; sekcja 6 |
 | G06 | **ZAAKCEPTOWANE:** 3 kampanie Google, 2 podstawowe role Meta, prosta deterministyczna polityka i wspólny przydział purchases/purchase_value | Parametry zapisane przy implementacji, bez symulatora aukcji; sekcje 7–8.1 |
 | G07 | **ZAAKCEPTOWANE:** deterministyczne wagi i losowanie, korekta tylko poza tolerancją, jawne warunki brzegowe i kontrola końcowego wyniku | Przypięty runtime, seedowane ID, sortowanie i opcjonalny NDJSON z manifestem; sekcje 9 i 10.3 |
 | G08 | **OTWARTE / NIEBLOKUJĄCE DLA LOKALNEJ IMPLEMENTACJI:** tryb ręcznego zastąpienia danych i odbiór zestawu | Wymaga osobnej decyzji przed ładowaniem; rekomendacja z sekcji 12 nie jest akceptacją |
@@ -367,7 +370,7 @@ Celowo odroczone: finalne linkowanie GA4–Profitroom i jego wartości/pokrycia,
 - [x] Zaakceptowano G02: orientacyjne targety, naturalność i brak korekty wyniku mieszczącego się w tolerancji.
 - [x] Zaakceptowano G03: prosty model sesyjny GA4, różnorodne archetypy, orientacyjne udziały urządzeń i kanałów oraz brak targetów niekalibrowanych eventów.
 - [x] Zaakceptowano G04: politykę NULL i ograniczonego pomiaru GA4, z kontrolą końcowego eksportu.
-- [x] Zaakceptowano G05: prosty model Profitroom booking_channel × is_cancelled i zasady pobytów oraz wartości.
+- [x] Zaakceptowano G05: prosty model Profitroom oparty na kanale i dacie anulacji w źródle i zasady pobytów oraz wartości.
 - [x] Zaakceptowano G06: strukturę kampanii Meta i Google Ads, prostą politykę atrybucji oraz wspólny przydział purchases i purchase_value.
 - [x] Zaakceptowano G07: deterministyczny algorytm rozdziału i korekt z jawnymi warunkami brzegowymi.
 - [x] Zaakceptowano zakres lokalnej implementacji, walidacji i eksportu; wykonanie kodu i odbiór wyników pozostają przyszłymi zadaniami.

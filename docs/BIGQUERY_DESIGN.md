@@ -58,7 +58,7 @@ flowchart TD
     GA["ga4 — events_demo: syntetyczne zdarzenia"] --> CORE["hma_core — czyszczenie, normalizacja i łączenie"]
     META["meta_ads — syntetyczne raporty"] --> CORE
     GOOGLE["google_ads — syntetyczne raporty"] --> CORE
-    PR["profitroom — syntetyczne rezerwacje i rewizje"] --> CORE
+    PR["profitroom — source schema 13 pól, dane syntetyczne"] --> CORE
     CORE --> ID["Tożsamość purchase–rezerwacja i osobna kwalifikacja płatna"]
     ID --> AGG["hma_core — dzienne agregaty, jakość i publikacja"]
     CORE --> AGG
@@ -83,7 +83,7 @@ Demo jest oddzielone od `creatic-503805` i nie otrzymuje automatycznego dostępu
 | `ga4` | Źródłowe zdarzenia GA4 z zachowaniem zagnieżdżeń | events_demo; dostęp procesu, bez bezpośredniego odczytu aplikacji |
 | `meta_ads` | Źródłowe koszty i wyniki Meta | meta_ads_daily; własna polityka konwersji |
 | `google_ads` | Źródłowe koszty i wyniki Google Ads | google_ads_daily; odrębność od Organic |
-| `profitroom` | Kanoniczne rezerwacje i ich rewizje | profitroom_booking_revisions; ewentualny osobny eksport booking_engine_events wymaga potwierdzenia |
+| `profitroom` | Surowe rezerwacje w schemacie rzeczywistego źródła | reservations_demo: 13 nullable pól 1:1; canonical i ewentualny osobny eksport zdarzeń są odrębne |
 | `hma_core` | Czyszczenie, ujednolicanie, deduplikacja i łączenie | Tabele oczyszczone, łączenie źródeł i pomocnicze agregaty; bez rejestrów operacyjnych; dostęp przetwarzania |
 | `hma_app` | Końcowe, bezpieczne widoki aplikacyjne | Sześć widoków daily; serwerowy odczyt po autoryzacji hotelu |
 
@@ -95,7 +95,7 @@ W dalszym opisie raw oznacza rolę danych źródłowych w czterech datasetach, m
 
 ### 4.1. Typy i NULL
 
-**PROPOZYCJA:** poniższe zestawy kolumn są dziedziczone przez tabele opisane w sekcjach 5–8. W listach kolumn `?` oznacza NULL dozwolone, brak `?` — wymagana wartość na tym etapie walidacji. Pola surowe mogą być niepoprawne lub nieznane; otrzymują kod jakości i pozostają poza zależnym obliczeniem zamiast domyślnej liczby.
+**PROPOZYCJA:** poniższe zestawy kolumn dotyczą tabel opisanych w sekcjach 5–8 z jawnymi wyjątkami źródłowymi; Profitroom w sekcji 5.5 zachowuje wyłącznie 13 pól. W listach kolumn `?` oznacza NULL dozwolone, brak `?` — wymagana wartość na tym etapie walidacji. Pola surowe mogą być niepoprawne lub nieznane; otrzymują kod jakości i pozostają poza zależnym obliczeniem zamiast domyślnej liczby.
 
 | Typ BigQuery | Zastosowanie |
 |---|---|
@@ -114,7 +114,7 @@ Kwoty w adapterze Next.js należy przenosić w sposób zachowujący dziesiętną
 
 ### 4.2. Zestawy metadanych
 
-**RAW_META**, w źródłach poza jawnym wariantem GA4 z sekcji 5.3: `hotel_id STRING`, `batch_id STRING`, `raw_row_id STRING`, `source_record_key STRING?`, `source_revision STRING?`, `source_updated_at TIMESTAMP?`, `extracted_at TIMESTAMP`, `loaded_at TIMESTAMP`, `source_system STRING`, `ingest_date DATE`, `metric_date DATE?`, `source_timezone STRING?`, `source_payload JSON?`, `payload_hash STRING`, `is_synthetic BOOL`, `scenario_id STRING?`, `generator_version STRING?`. Dla demo ostatnie dwa pola są wymagane. `raw_row_id` opisuje pozycję z jednego eksportu; nie zastępuje klucza biznesowego.
+**RAW_META**, w źródłach poza jawnym wariantem GA4 z sekcji 5.3 i Profitroom z sekcji 5.5: `hotel_id STRING`, `batch_id STRING`, `raw_row_id STRING`, `source_record_key STRING?`, `source_revision STRING?`, `source_updated_at TIMESTAMP?`, `extracted_at TIMESTAMP`, `loaded_at TIMESTAMP`, `source_system STRING`, `ingest_date DATE`, `metric_date DATE?`, `source_timezone STRING?`, `source_payload JSON?`, `payload_hash STRING`, `is_synthetic BOOL`, `scenario_id STRING?`, `generator_version STRING?`. Dla demo ostatnie dwa pola są wymagane. `raw_row_id` opisuje pozycję z jednego eksportu; nie zastępuje klucza biznesowego.
 
 **CORE_META**, w tabelach faktów z sekcji 6: `hotel_id STRING`, `metric_date DATE`, `date_basis STRING`, `as_of_at TIMESTAMP`, `processed_at TIMESTAMP`, `loaded_at TIMESTAMP`, `source_system STRING`, `batch_id STRING`, `source_batch_ids ARRAY<STRING>`, `contract_version STRING` = `0.2`, `transform_version STRING`, `config_version STRING?`, `is_synthetic BOOL`, `scenario_id STRING?`, `metric_status STRING`, `reason_codes ARRAY<STRING>`. `config_version` jest wymagane dla faktów zależnych od map/kwalifikacji. Brak takiej wersji daje stan niedostępności kwalifikacji.
 
@@ -129,7 +129,7 @@ Kwoty w adapterze Next.js należy przenosić w sposób zachowujący dziesiętną
 | `batch_id` | STRING | Identyfikator partii danych; dla agregatu identyfikuje partię wyniku, a source_batch_ids zachowuje referencje do wejść |
 | `is_synthetic` | BOOL | true dla wszystkich danych demo |
 
-Pola te są wymagane dla planowanych rekordów demo. `ingest_date` jest datą UTC wyprowadzoną z loaded_at. Źródłowy timestamp importu, jeśli występuje, może pozostać osobnym polem opisanym przez adapter. Metadane pozwalają odtworzyć pochodzenie dostępnych rekordów; same nie potwierdzają kompletności importu ani nie dokumentują nieudanego uruchomienia.
+Pola te dotyczą tabel, których schemat je przewiduje. Profitroom source z sekcji 5.5 ma wyłącznie 13 pól; metadane hotelu, partii i syntetyczności są w manifeście, a później w warstwie canonical. `ingest_date` jest datą UTC wyprowadzoną z loaded_at. Źródłowy timestamp importu, jeśli występuje, może pozostać osobnym polem opisanym przez adapter. Metadane pozwalają odtworzyć pochodzenie dostępnych rekordów; same nie potwierdzają kompletności importu ani nie dokumentują nieudanego uruchomienia.
 
 ### 4.3. Klucze, relacje i semantyka dat
 
@@ -155,11 +155,11 @@ Klucze w tym projekcie są regułami unikalności sprawdzanymi przed publikacją
 | `cohort_started_at` | Jeden moment przypisania journey do kohorty lejka |
 | `outcome_at` | Wynik ścieżki; dla rezerwacji wynika z daty utworzenia Profitroom |
 
-Dzień docelowy wyznacza `Europe/Warsaw`, z granicami lokalnych dni i poprawną zmianą czasu. Dzienne raporty platform w innej strefie pozostają oznaczone jako nieporównywalne do czasu zatwierdzenia transformacji (O04). Każde źródło docelowo wnosi `metric_date`; w raw niepoprawna data pozostaje NULL i trafia do kontroli, nie do fikcyjnej daty.
+Dzień docelowy wyznacza `Europe/Warsaw`, z granicami lokalnych dni i poprawną zmianą czasu. Dzienne raporty platform w innej strefie pozostają oznaczone jako nieporównywalne do czasu zatwierdzenia transformacji (O04). Każde źródło docelowo wnosi dzień metryki przez adapter; Profitroom source zachowuje Data rezerwacji bez dodawania metric_date; w raw niepoprawna data pozostaje NULL i trafia do kontroli, nie do fikcyjnej daty.
 
 ## 5. Tabele raw — obserwacje źródłowe
 
-To projekt wejścia adapterów i generatora syntetycznego, a nie deklaracja, że obecnie posiadamy takie eksporty. Domyślnie tabela dziedziczy RAW_META; wyjątek GA4 opisuje sekcja 5.3. Domyślna partycja źródeł poza ga4.events_demo: **`ingest_date`**, aby zachować również późne rewizje starych dat. Klaster: **`hotel_id`**, następnie wskazane kolumny. PK fizyczny: `(hotel_id, batch_id, raw_row_id)`; klucz logiczny opisuje deduplikację między batchami.
+To projekt wejścia adapterów i generatora syntetycznego, a nie deklaracja, że obecnie posiadamy takie eksporty. Domyślnie tabela dziedziczy RAW_META; wyjątki GA4 i Profitroom opisują sekcje 5.3 i 5.5. Profitroom nie dziedziczy poniższej partycji, klastrów ani klucza. Domyślna partycja pozostałych źródeł: **`ingest_date`**, aby zachować również późne rewizje starych dat. Klaster: **`hotel_id`**, następnie wskazane kolumny. PK fizyczny: `(hotel_id, batch_id, raw_row_id)`; klucz logiczny opisuje deduplikację między batchami.
 
 ### 5.1. `meta_ads.meta_ads_daily`
 
@@ -230,14 +230,15 @@ Nazwy niestandardowych zdarzeń są nazwami demonstracyjnymi, nie gwarancją zna
 - Pola: `engine_instance_id STRING`, `source_event_id STRING?`, `event_name STRING`, `event_at TIMESTAMP`, `source_sequence INT64?`, `browser_token STRING?`, `source_session_id STRING?`, `transaction_namespace STRING?`, `transaction_token STRING?`, `source_booking_id STRING?`, `source STRING?`, `medium STRING?`, `campaign_id STRING?`, `click_token STRING?`, `consent_state STRING?`, `event_value NUMERIC?`, `currency_code STRING?`.
 - Purchase w GA4 i booking engine może reprezentować tę samą transakcję. Odrębność źródeł pozostaje w raw, wspólna tożsamość jest ustalana przed liczeniem rezerwacji.
 
-### 5.5. `profitroom.profitroom_booking_revisions`
+### 5.5. `profitroom.reservations_demo` — schemat rzeczywistego źródła 1:1
 
-- Grain: stan jednej rezerwacji z jednego eksportu; kolejne eksporty zachowują historię zmian.
-- Klucz logiczny: hotel + source_booking_id + źródłowa rewizja/czas aktualizacji. Tożsamość rezerwacji: hotel + source_booking_id.
-- Klaster: `hotel_id, source_booking_id, source_status`.
-- Pola: `source_booking_id STRING`, `booking_created_at TIMESTAMP?`, `check_in_date DATE?`, `check_out_date DATE?`, `source_status STRING?`, `source_sales_channel STRING?`, `gross_value_after_discounts NUMERIC?`, `currency_code STRING?`, `transaction_namespace STRING?`, `transaction_token STRING?`, `test_flag BOOL?`, `source_deleted BOOL?`.
-- Mapowanie transaction do rezerwacji może być dostarczone w dodatkowej obserwacji adaptera. Kolumna jest nullable do czasu potwierdzenia jej dostępności. Wymagane biznesowo pola z kontraktu podlegają kontroli próbki Profitroom (O02).
-- Brak rezerwacji w kolejnym pliku nie oznacza automatycznej anulacji; tryb pełny/delta i znaczenie usunięcia muszą być jawne.
+**USTALONE: source schema ≠ canonical schema.** Tabela ma dokładnie 13 kolumn rzeczywistego Profitroom, wszystkie nullable i w tej samej kolejności. DDL 004 zawiera pełne nazwy i typy: polskie pola źródłowe, TIMESTAMP dla utworzenia/anulacji, DATE dla pobytu, INT64 dla liczby pokoi i FLOAT64 dla trzech kwot. Demo różni się danymi, nie strukturą.
+
+- Grain: rekord rezerwacji źródłowej; syntetyczny Kod rezerwacji jest unikalny w zestawie. Brak dodatkowej kolumny hotelu, rewizji, statusu, flagi anulacji i pól linkage.
+- Data anulacji obecna oznacza anulowaną; NULL oznacza brak informacji o anulowaniu. Aktywność według kontraktu pozostaje niewyznaczalna bez dodatkowych faktów.
+- Metadane hotelu i pochodzenia zestawu są w manifeście. Tabela nie rozszerza source schema o RAW_META.
+- Bez partycjonowania po usuniętym metric_date i bez klastrów z nieistniejących kolumn. Istniejąca tabela w chmurze nie zostaje automatycznie zmieniona przez CREATE TABLE IF NOT EXISTS.
+- Source Profitroom → adapter / canonical reservations → hma_core → hma_app. Schematy canonical w dalszych sekcjach są przyszłym projektem, a nie polami źródła. Brak rekordu w późniejszym eksporcie nie dowodzi anulacji; tryb pełny/delta pozostaje decyzją adaptera.
 
 ### 5.6. `hma_core.marketing_observations` — uporządkowane obserwacje
 
@@ -394,14 +395,14 @@ Procenty dzienne są wygodą diagnostyczną. Serwer liczy procent okresu z sum b
 
 **USTALONE:** rejestry operacyjne, historia uruchomień oraz osobne logi importów pozostają poza zakresem v1. Tabele import_batches, releases i rejected_records nie są częścią projektu v1 ani zawartości hma_core. Podstawową identyfikowalność zapewniają loaded_at, source_system, batch_id i is_synthetic w odpowiednich tabelach (sekcja 4.2).
 
-Po wdrożeniu automatycznych importów, jeżeli pojawi się potrzeba rozbudowanego monitoringu, dataset **hma_ops może zostać dodany w przyszłości po osobnej decyzji architektonicznej**. Nie jest wymaganiem bieżącego wdrożenia. Historia zmian statusów rezerwacji jest historią faktów biznesowych Profitroom i pozostaje w zakresie; nie jest historią uruchomień.
+Po wdrożeniu automatycznych importów, jeżeli pojawi się potrzeba rozbudowanego monitoringu, dataset **hma_ops może zostać dodany w przyszłości po osobnej decyzji architektonicznej**. Nie jest wymaganiem bieżącego wdrożenia. Historia rewizji Profitroom nie jest częścią 13-polowego source schema; ewentualne odtwarzanie stanów wymaga późniejszej decyzji adaptera.
 
 ### 8.2. Aktualizacja danych bez osobnych logów
 
-1. Właścicielka ręcznie uruchamia uzgodniony import z identyfikatorem partii i polami technicznymi zapisanymi przy rekordach.
-2. Kontrola powtórzeń wykorzystuje hotel, batch_id i klucz rekordu; rewizje źródła pozostają odróżnione od ponowienia tej samej partii.
+1. Właścicielka ręcznie uruchamia uzgodniony import; metadane są przy rekordach tylko tam, gdzie przewiduje je schemat. Dla Profitroom source pochodzenie zestawu opisuje manifest.
+2. Kontrola powtórzeń wykorzystuje kontekst hotelu, partii i klucz rekordu; dla Profitroom source są to manifest i Kod rezerwacji, a nie dodatkowe kolumny.
 3. Czyszczenie i łączenie odbywa się w hma_core. Błędy skutkują odpowiednimi statusami jakości; brak wymaganych faktów blokuje zależny wynik. Podsumowania jakości nie wymagają osobnej tabeli kwarantanny lub historii błędów.
-4. Aktualny stan rezerwacji wynika z wiarygodnej rewizji Profitroom (O02); pola techniczne importu nie zastępują statusu biznesowego.
+4. Interpretacja aktualnego eksportu Profitroom i jego kompletności należy do adaptera (O02); pola techniczne importu nie zastępują statusu biznesowego.
 5. Pomocnicze agregaty hma_core zachowują wersję logiki, konfiguracji i pochodzenie partii. Warunek spójnej aktualizacji sześciu zestawów oraz zachowania ostatnich poprawnych wyników pozostaje wymaganiem O12. Szczegółowy mechanizm bez rejestru publikacji będzie rozstrzygnięty przed implementacją agregatów w hma_core. O12 pozostaje świadomie odroczona i nie blokuje tworzenia tabel źródłowych ani danych syntetycznych.
 6. Serwer odczytuje jedną spójną wersję danych dla obu okresów. Daty aktualizacji są widoczne. loaded_at i obecność rekordów nie dowodzą pełnego pokrycia źródła; nieznana kompletność otrzymuje UNKNOWN.
 
@@ -425,7 +426,7 @@ W tabeli `Σ` oznacza sumę dla jednego wybranego okresu po kontroli jakości i 
 | Wartość aktywnych rezerwacji / cała sprzedaż | Profitroom → bookings_current → hotel_sales/overview | active_booking_value, active_hotel_value, active_bookings | Bazy i Σ; brutto po rabatach, pełny zakres hotelu tylko przy pokryciu kanałów |
 | channel_booking_share_pct | hotel_sales_daily | Σ active_bookings kanału / Σ active_bookings hotelu ×100 | Serwer; rozłączne kanały, unknown widoczny; zero całości → NULL |
 | channel_value_share_pct | hotel_sales_daily | Σ active_booking_value kanału / Σ hotelu ×100 | Serwer; jedna waluta, wartość brutto po rabatach |
-| Anulacje / cancellation_rate_pct | Profitroom rewizje → bookings_current → hotel_sales | Σ cancelled_bookings / Σ cohort_bookings ×100 | Status na as_of_at dla kohorty utworzenia; zero kohorty → NULL |
+| Anulacje / cancellation_rate_pct | Profitroom source → adapter → bookings_current → hotel_sales | Σ cancelled_bookings / Σ cohort_bookings ×100 | Status na as_of_at dla kohorty utworzenia; zero kohorty → NULL |
 | Tożsamość purchase | GA4/BE + Profitroom + źródłowa mapa → purchase_booking_links | purchase_linked_active_bookings, purchase_journeys_linked_to_profitroom, linked_outcome_count | Bazy liczą różne jawne jednostki; techniczne potwierdzenie rezerwacji |
 | Sprzedaż płatnie powiązana | Poprzednia relacja + marketing_observations/web_events → evidence → links | linked_active_bookings, linked_active_booking_value | Jeden booking w jednym hotelowym zakresie; dodatkowa informacja marketingowa |
 | linked_booking_roas | Overview + quality + konfiguracja serwera | Σ linked_active_booking_value / Σ linked_scope_ad_spend | Serwer po pięciu warunkach; szczegóły w sekcji 10 |
@@ -533,7 +534,7 @@ Przed utworzeniem zasobów uzgadniamy sposób rozliczeń, budżet i limity, a pr
 
 | Obszar kontraktu | Realizacja w projekcie | Stan |
 |---|---|---|
-| Profitroom i statusy | Raw revisions, bookings_current, hotel_sales_daily | Zgodne; próbka eksportu O02 |
+| Profitroom i statusy | Source 13 pól → przyszłe bookings_current, hotel_sales_daily | Statusy aktywne wymagają dodatkowych faktów; source ma datę anulacji |
 | Konfiguracja w Supabase | Odczyt procesu i serwera; BQ przechowuje odniesienia/rezultaty | Zgodne; polityka wersji O07 |
 | Dowolny zakres dat | metric_date, równoliczny poprzedni zakres, serwerowe ilorazy | Zgodne, bez ograniczenia do tygodnia |
 | Sześć płaskich widoków | Dokładne nazwy i pełne kolumny N.1–N.7 kontraktu | Zachowane; pola techniczne tabel źródłowych i core są rozwinięciem |

@@ -21,7 +21,7 @@ Fikcyjny obiekt: 80 pokoi i apartamentów, strefa wellness, restauracja, oferta 
 
 Wartości uwzględniają elementy zawarte w syntetycznej rezerwacji Profitroom. Prowizje OTA i przychód zrealizowany pozostają poza zakresem. Rozkład będzie zawierał różne kwoty, a dawny model średniej 4000 PLN jest historyczną bazą wymagającą ponownego uzgodnienia po finalizacji kalibracji źródeł. Aktualna referencja wartości nieanulowanych jest w sekcji 5; rozkład cen i udział typów pobytu wymagają uzgodnienia z tą skalą.
 
-Końcowy punkt stanu: `as_of_at = 2026-08-30T06:00:00Z` (08:00 lokalnie). Obowiązujące ładowanie: dzień po dacie źródłowej o 06:00 UTC; końcowa aktualizacja stanu Profitroom obejmuje znane wtedy anulacje. as_of_at to dokładnie 30 sierpnia 2026, 08:00 Europe/Warsaw. Loaded_at jest deterministycznym czasem scenariusza, a nie zegarem komputera wykonującego generator. Importy są identyfikowalne polami tabel; osobne logi i rejestry uruchomień pozostają poza v1.
+Końcowy punkt stanu: `as_of_at = 2026-08-30T06:00:00Z` (08:00 lokalnie). Obowiązujące ładowanie: dzień po dacie źródłowej o 06:00 UTC; końcowa aktualizacja stanu Profitroom obejmuje znane wtedy anulacje. as_of_at to dokładnie 30 sierpnia 2026, 08:00 Europe/Warsaw. Loaded_at jest deterministycznym czasem scenariusza, a nie zegarem komputera wykonującego generator. Dla Profitroom source metadane czasu, hotelu, wersji i syntetyczności pozostają w lokalnym manifeście; pozostałe importy są identyfikowalne polami ich tabel; osobne logi i rejestry uruchomień pozostają poza v1.
 
 Wszystkie 90 dni mają zadeklarowany zakres źródeł, również dni z zerowym wynikiem. Aplikacja nadal obsługuje dowolny zakres i poprzedni zakres tej samej długości. Porównanie całych 90 dni wymaga wcześniejszych 90 dni, których ten scenariusz nie zawiera: wynik zmiany otrzyma NO_DATA, a nie wymyślone porównanie. Przykład poprawnego porównania wewnątrz danych: 16–29 sierpnia do 2–15 sierpnia. Okres w trakcie testujemy kontrolowanym zegarem/punktem dostępności, bez przesuwania dat scenariusza.
 
@@ -32,7 +32,7 @@ Wszystkie 90 dni mają zadeklarowany zakres źródeł, również dni z zerowym w
 | `ga4.events_demo` | Jeden zaobserwowany syntetyczny event; zachowanie, intencje i etapy lejka. Istniejący DDL pozostaje bez zmian |
 | `meta_ads.meta_ads_daily` — planowana | Dzienny wynik kampanii; koszt delivery oddzielony od wybranej akcji conversion zgodnie z projektem |
 | `google_ads.google_ads_daily` — planowana | Analogiczny raport Google, własny model i okno; brand jest rozłączną klasą kampanii płatnych |
-| `profitroom.profitroom_booking_revisions` — planowana | Rewizja jednej rezerwacji; po wyborze aktualnego stanu jedna kanoniczna rezerwacja na hotel i booking_id |
+| `profitroom.reservations_demo` | Dokładne odwzorowanie 13 nullable pól rzeczywistej tabeli źródłowej; nowe dane syntetyczne, bez metadanych i pól canonical |
 
 Osobny eksport Booking Engine pozostaje opcjonalny i nie jest potrzebny do tego scenariusza: wszystkie zdarzenia zachowania Booking Engine dostarcza GA4. Dane konfiguracyjne i progi nadal należą do Supabase. Ten dokument nie tworzy tam ustawień.
 
@@ -270,7 +270,11 @@ Podane udziały sumują się do 98,68%. Pozostałe 1,32 punktu procentowego wyma
 
 W **24 referencyjnych purchase brakowało wiarygodnego przychodu GA4**. Brak wartości nie oznacza zera. GA4 dostarcza obserwacji zachowania i lejka, a Profitroom pozostaje kanonicznym źródłem wartości rezerwacji. Sposób reprezentacji braków wartości w demo i ewentualnych zweryfikowanych par wymaga uzgodnienia; nie odtwarzamy przychodu GA4 z samego agregatu Profitroom.
 
-## 5. Profitroom — aktualna kalibracja kanonicznej sprzedaży
+## 5. Profitroom — aktualna kalibracja źródła rezerwacji
+
+**Doprecyzowanie schematu: source schema ≠ canonical schema.** Demo odwzorowuje 1:1 nazwy, typy, nullable i kolejność 13 kolumn rzeczywistej tabeli (DDL 004). Źródło → przyszły adapter / canonical reservations → hma_core → hma_app. Warstwa canonical pozostaje odroczona.
+
+Dane demo używają kanałów Booking.com, Expedia, Booking Engine. `Data anulacji IS NOT NULL` oznacza anulowaną; NULL oznacza brak informacji o anulowaniu. „Nieanulowane” w poniższej kalibracji jest skrótem dla rekordów bez daty anulacji, a nie statusem aktywnym. `Wartość`, `Zapłacono` i `Pozostało do zapłaty` mają typ FLOAT64; generator oblicza kwoty w groszach i zachowuje sumę wpłaty oraz pozostałej kwoty równą wartości. Anulacja nie zeruje automatycznie wartości. Oferta i typ pokoju są całkowicie syntetyczne. Metadane scenariusza i czasu pozostają w manifeście; tabela nie zawiera pól kanonicznych, technicznych ani linkage.
 
 Referencja obejmuje **54 dni**. Mnożnik: **90 / 54 × 2 = 10/3 ≈ 3,3333**. Profitroom pozostaje kanonicznym źródłem rezerwacji, kanału, wartości i anulacji.
 
