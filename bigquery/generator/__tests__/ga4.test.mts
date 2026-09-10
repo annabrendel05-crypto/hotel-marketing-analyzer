@@ -1,8 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { generateGA4, summarizeGA4, ga4Targets, ga4Channels, type GA4Row } from '../ga4.mts';
+import { readFileSync, createReadStream } from 'node:fs';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { exportGA4, generateGA4, summarizeGA4, ga4Targets, ga4Channels, type GA4Row } from '../ga4.mts';
 import { ga4Schema } from '../ga4-schema.mts';
 import type { ScenarioConfig } from '../config.mts';
 import { metricDate } from '../time.mts';
@@ -74,4 +77,30 @@ test('GA4 deterministic serialized result ignores clock; seed changes records; D
     const row=generateGA4({...fixture,start_date}).next().value!;
     assert.equal(metricDate(new Date(Number(BigInt(row.event_timestamp!)/1000n)).toISOString()),start_date);
   }
+});
+
+test('GA4 local NDJSON and manifest repeat byte-for-byte, hashes match, existing destination is protected', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'ga4-export-test-'));
+  try {
+    const first = join(root, 'first'), second = join(root, 'second');
+    const a = await exportGA4(fixture, first), b = await exportGA4(fixture, second);
+    assert.deepEqual(a, b);
+    assert.deepEqual(await readFile(join(first, 'manifest.json')), await readFile(join(second, 'manifest.json')));
+    const left = createReadStream(join(first, 'events_demo.ndjson'));
+    const right = createReadStream(join(second, 'events_demo.ndjson'));
+    const iterator = right[Symbol.asyncIterator]();
+    const sha = createHash('sha256'); let bytes = 0, lines = 0;
+    try {
+      for await (const chunk of left) {
+        const other = await iterator.next(); assert.equal(other.done, false); assert.deepEqual(chunk, other.value);
+        sha.update(chunk); bytes += chunk.length;
+        for (const byte of chunk) if (byte === 10) lines++;
+      }
+      assert.equal((await iterator.next()).done, true);
+    } finally { left.destroy(); right.destroy(); }
+    assert.equal(sha.digest('hex'), a.artifacts[0].sha256);
+    assert.equal(bytes, a.artifacts[0].bytes); assert.equal(lines, a.records);
+    assert.equal(a.artifacts[0].sha256, digest); // Same serialized content as the in-memory fixture test.
+    await assert.rejects(exportGA4(fixture, first), { code: 'EEXIST' });
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

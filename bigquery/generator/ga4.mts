@@ -1,3 +1,9 @@
+import { createHash } from 'node:crypto';
+import { createWriteStream } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { pipeline } from 'node:stream/promises';
+import { buildManifest, serializeManifest } from './manifest.mts';
 import { validateConfig, type ScenarioConfig } from './config.mts';
 import { hash, randomStream, ga4SessionId } from './random.mts';
 import { calendar, warsawTimestamp } from './time.mts';
@@ -104,4 +110,34 @@ export function summarizeGA4(rows: Iterable<GA4Row>) {
     }
   }
   return {records, events, mobile_percentage: mobile / events.session_start * 100, limitedSessions, channels};
+}
+
+// Stream bounded chunks: the full 90-day NDJSON need not fit in memory.
+// A new directory is required; a complete manifest is published only after the file closes.
+export async function exportGA4(config: ScenarioConfig, directory: string) {
+  validateConfig(config);
+  const c = structuredClone(config);
+  await mkdir(directory);
+  const path = 'events_demo.ndjson';
+  const sha = createHash('sha256');
+  let bytes = 0, records = 0;
+  async function* chunks() {
+    let chunk = '';
+    for (const row of generateGA4(c)) {
+      chunk += JSON.stringify(row) + '\n';
+      records++;
+      if (chunk.length >= 1024 * 1024) {
+        const buffer = Buffer.from(chunk); bytes += buffer.length; sha.update(buffer);
+        yield buffer; chunk = '';
+      }
+    }
+    if (chunk) { const buffer = Buffer.from(chunk); bytes += buffer.length; sha.update(buffer); yield buffer; }
+  }
+  await pipeline(chunks(), createWriteStream(join(directory, path), { flags: 'wx' }));
+  const manifest = { ...buildManifest(c, [{ path, status: 'present', sha256: sha.digest('hex'), bytes }]),
+    source_generator_version: GA4_VERSION, source_schema_hash: hash(ga4Schema), records,
+    tables: [{ path, table: 'ga4.events_demo' }],
+  };
+  await writeFile(join(directory, 'manifest.json'), serializeManifest(manifest), { flag: 'wx' });
+  return manifest;
 }
