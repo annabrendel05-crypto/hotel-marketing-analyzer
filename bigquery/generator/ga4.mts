@@ -1,0 +1,107 @@
+import { validateConfig, type ScenarioConfig } from './config.mts';
+import { hash, randomStream, ga4SessionId } from './random.mts';
+import { calendar, warsawTimestamp } from './time.mts';
+import { sourceWeights } from './signals.mts';
+import { largestRemainder } from './allocation.mts';
+import { ga4Schema } from './ga4-schema.mts';
+
+export const GA4_VERSION = 'ga4-demo-generator-v1';
+export const ga4Targets = { session_start: 92123, page_view: 230810, user_engagement: 124773,
+  step1_dates_and_rooms: 36207, step2_extras: 1940, step3_confirmation: 513,
+  purchase: 80, click_tel: 590, form_submit: 237, open_apartment_details: 13537, open_package_details: 6053 } as const;
+type Event = keyof typeof ga4Targets;
+type Value<T> = T extends 'STRING' ? string | null : T extends 'INT64' ? string | null :
+  T extends 'FLOAT64' ? number | null : T extends 'BOOL' ? boolean | null :
+  T extends { readonly array: infer U } ? Value<U>[] : T extends object ? { -readonly [K in keyof T]: Value<T[K]> } | null : never;
+export type GA4Row = { -readonly [K in keyof typeof ga4Schema]: Value<typeof ga4Schema[K]> };
+function empty(schema: unknown): unknown {
+  if (typeof schema === 'string') return null;
+  const fields = schema as Record<string, unknown>;
+  if ('array' in fields) return [];
+  return Object.fromEntries(Object.entries(fields).map(([k,v]) => [k, empty(v)]));
+}
+// Only synthetic session categories, not evidence of paths of real people.
+export const ga4Channels = [
+  ['Paid Social', 35.01, 'facebook', 'paid_social'], ['Paid Search', 14.67, 'google', 'cpc'],
+  ['Organic Search', 13.67, 'google', 'organic'], ['Referral', 11.14, 'travel.example', 'referral'],
+  ['Unassigned', 11.04, null, null], ['Organic Social', 6.94, 'facebook', 'social'],
+  ['Direct', 6.21, '(direct)', '(none)'], ['Other', 1.32, null, null],
+] as const;
+// Stream one day at a time: no half-million-row buffer and no system clock.
+// Stable order: day, internal session ordinal, event stage. No cross-source linkage.
+export function* generateGA4(config: ScenarioConfig): Generator<GA4Row> {
+  validateConfig(config);
+  const c = structuredClone(config);
+  const rng = randomStream(c, 'ga4:v1');
+  const prefix = hash([GA4_VERSION, c]).slice(0, 24);
+  const days = calendar(c);
+  const events = Object.keys(ga4Targets) as Event[];
+  const budgets = Object.fromEntries(events.map(name => {
+    const target = Math.round(ga4Targets[name] * (0.995 + rng() * 0.01));
+    return [name, largestRemainder(target, sourceWeights(c, `ga4:${name}`).map((weight,i) => ({ key: days[i], weight })))];
+  })) as Record<Event, number[]>;
+  let sessionIndex = 0;
+  for (const [dayIndex, day] of days.entries()) {
+    const count = budgets.session_start[dayIndex];
+    const sessions: Event[][] = Array.from({length: count}, () => ['session_start']);
+    for (const name of events.filter(n => n !== 'session_start')) {
+      // Each stage/contact at most once; repeated page views and engagement are allowed.
+      const order = Array.from({length: count}, (_,i) => i);
+      for (let i = count - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [order[i],order[j]] = [order[j],order[i]]; }
+      const n = budgets[name][dayIndex];
+      if (!['page_view','user_engagement'].includes(name) && n > count) throw new Error('Stage exceeds session capacity');
+      for (let i = 0; i < n; i++) sessions[order[i % count]].push(name);
+    }
+    const base = Date.parse(warsawTimestamp(day, '08:00:00'));
+    for (const names of sessions) {
+      const index = sessionIndex++;
+      const sessionId = ga4SessionId(c, 'ga4:v1', index);
+      // 10% limited measurement is a synthetic v1 parameter, not a measured benchmark.
+      const limited = rng() < 0.1;
+      const mobile = rng() < 0.8745;
+      let channelRoll = rng() * 100;
+      const channel = ga4Channels.find(ch => (channelRoll -= ch[1]) < 0) ?? ga4Channels[7];
+      const start = base + Math.floor(rng() * 14 * 3600) * 1000;
+      names.sort((a,b) => events.indexOf(a) - events.indexOf(b));
+      for (const [ordinal, name] of names.entries()) {
+        const row = empty(ga4Schema) as GA4Row;
+        row.event_date = day.replaceAll('-', '');
+        row.event_timestamp = (BigInt(start + ordinal * 10000) * 1000n).toString();
+        row.event_name = name;
+        row.user_pseudo_id = limited ? null : `demo_browser_${prefix}_${index}`;
+        row.stream_id = 'demo_web_001'; row.platform = 'WEB';
+        row.privacy_info = { analytics_storage: limited ? 'No' : 'Yes', ads_storage: limited ? 'No' : 'Yes', uses_transient_token: 'No' };
+        row.device!.category = mobile ? 'mobile' : 'desktop';
+        row.device!.operating_system = mobile ? 'Android' : 'Windows';
+        row.device!.web_info = {browser:'Chrome', browser_version:null, hostname:'baltic-horizon.example'};
+        // Unique devices in minimal v1; first observed acquisition equals first session.
+        row.traffic_source = {name:null, medium:channel[3], source:channel[2]};
+        const cross = row.session_traffic_source_last_click!.cross_channel_campaign!;
+        cross.source = channel[2]; cross.medium = channel[3];
+        cross.default_channel_group = channel[0]; cross.primary_channel_group = channel[0];
+        const param = (key: string, string_value: string | null, int_value: string | null) =>
+          ({key, value:{string_value, int_value, float_value:null, double_value:null}});
+        row.event_params = [param('page_location', 'https://baltic-horizon.example/', null)];
+        if (!limited) row.event_params.push(param('ga_session_id', null, sessionId));
+        if (name === 'user_engagement') row.event_params.push(param('engagement_time_msec', null, '10000'));
+        row.ecommerce = null; // Revenue and transaction identity are uncalibrated; never copied from Profitroom.
+        yield row;
+      }
+    }
+  }
+}
+export function summarizeGA4(rows: Iterable<GA4Row>) {
+  const events: Record<string, number> = {};
+  const channels: Record<string, number> = {};
+  let records = 0, mobile = 0, limitedSessions = 0;
+  for (const row of rows) {
+    records++; events[row.event_name!] = (events[row.event_name!] ?? 0) + 1;
+    if (row.event_name === 'session_start') {
+      mobile += Number(row.device?.category === 'mobile');
+      limitedSessions += Number(row.user_pseudo_id === null);
+      const channel = row.session_traffic_source_last_click!.cross_channel_campaign!.default_channel_group!;
+      channels[channel] = (channels[channel] ?? 0) + 1;
+    }
+  }
+  return {records, events, mobile_percentage: mobile / events.session_start * 100, limitedSessions, channels};
+}
