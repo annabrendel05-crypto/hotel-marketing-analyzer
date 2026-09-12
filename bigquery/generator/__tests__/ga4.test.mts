@@ -43,23 +43,41 @@ test('GA4 matches source DDL including nested order, types and nullable fields',
 test('GA4 full 90-day fixture preserves targets, identifiers, measurement and local dates',()=>{
   const days=new Set<string>(); const users=new Set<string>(); const sha=createHash('sha256');
   let lastSession: string|null=null; let lastTime=0n;
+  let startTime=0n, engagement=0, starts=0, identifiedStarts=0;
+  const durations: number[]=[];
+  const sessionIds = new Set<string>();
   function* inspected(): Generator<GA4Row> {
     for(const row of generateGA4(fixture)) {
       sha.update(JSON.stringify(row)+'\n');
       assert(!['engaged_view','click_mail'].includes(row.event_name!));
       if(row.event_name==='session_start') {
+        if(starts) durations.push(engagement);
+        engagement=0; startTime=BigInt(row.event_timestamp!); starts++;
+        const id=row.event_params.find(p=>p?.key==='ga_session_id')?.value?.int_value;
+        assert(id && BigInt(id)>0n); assert(!sessionIds.has(id)); sessionIds.add(id); identifiedStarts++;
+
         assert(!users.has(row.user_pseudo_id!)); if(row.user_pseudo_id) users.add(row.user_pseudo_id);
         lastSession=row.user_pseudo_id; lastTime=BigInt(row.event_timestamp!);
         if(!days.has(row.event_date!)) { check(ga4Schema,row); days.add(row.event_date!); }
       } else { assert.equal(row.user_pseudo_id,lastSession); assert(BigInt(row.event_timestamp!)>lastTime); lastTime=BigInt(row.event_timestamp!); }
+      const ms=row.event_params.find(p=>p?.key==='engagement_time_msec')?.value?.int_value;
+      if(ms) { assert(Number(ms)>0); engagement+=Number(ms); assert(BigInt(engagement)*1000n<=BigInt(row.event_timestamp!)-startTime); }
       if(row.event_name==='purchase') assert.equal(row.ecommerce,null);
-      if(!row.user_pseudo_id) assert(!row.event_params.some(p=>p?.key==='ga_session_id'));
+      if(!row.user_pseudo_id && row.event_name!=='session_start') assert(!row.event_params.some(p=>p?.key==='ga_session_id'));
       // UTC timestamp stays within the declared local date, including DST.
       if(row.event_name==='session_start') assert.equal(metricDate(new Date(Number(BigInt(row.event_timestamp!)/1000n)).toISOString()).replaceAll('-',''),row.event_date);
       yield row;
     }
   }
   const summary=summarizeGA4(inspected()); digest=sha.digest('hex');
+  durations.push(engagement);
+  assert.equal(identifiedStarts,starts); // 100% session_start, including limited measurement.
+  assert(durations.some(ms=>ms>0 && ms<10000));
+  assert(durations.some(ms=>ms>=10000 && ms<=60000));
+  assert(durations.some(ms=>ms>60000));
+  assert(new Set(durations).size>100);
+  assert.equal(summary.records,506040); assert.equal(summary.events.session_start,92180);
+  assert.equal(summary.events.page_view,230193);
   assert.equal(days.size,90);
   for(const [key,target] of Object.entries(ga4Targets)) assert(Math.abs(summary.events[key]-target)<=target*0.02,key);
   assert(Math.abs(summary.mobile_percentage-87.45)<2);

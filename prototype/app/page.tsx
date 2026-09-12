@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   demoCampaignMetrics,
   demoCampaigns,
@@ -239,9 +239,154 @@ export default function Home() {
   const [chat, setChat] = useState(false);
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<{ q: string; a: string }[]>([]);
+  const [ga4FunnelMetrics, setGa4FunnelMetrics] = useState<Array<{
+    period: "current" | "comparison";
+    sessions: number;
+    engaged_sessions: number;
+    sessions_over_60s: number;
+    apartment_open_sessions: number;
+    package_open_sessions: number;
+    step1: number;
+    step2: number;
+    step3: number;
+    purchases: number;
+  }>>([]);
+
+  const [metaAdsSummary, setMetaAdsSummary] = useState<{
+    current: {
+      spend: number;
+      impressions: number;
+      clicks: number;
+      link_clicks: number;
+      landing_page_views: number;
+      search: number;
+      add_to_cart: number;
+      initiate_checkout: number;
+      purchases: number;
+      purchase_value: number;
+      roas: number | null;
+    };
+    comparison: {
+      spend: number;
+      impressions: number;
+      clicks: number;
+      link_clicks: number;
+      landing_page_views: number;
+      search: number;
+      add_to_cart: number;
+      initiate_checkout: number;
+      purchases: number;
+      purchase_value: number;
+      roas: number | null;
+    } | null;
+  } | null>(null);
+  const [profitroomSales, setProfitroomSales] = useState<{
+    current: HotelSalesMetric[];
+    comparison: HotelSalesMetric[];
+  } | null>(null);
+
+  const [googleAdsSummary, setGoogleAdsSummary] = useState<any>(null);
+
   const selectedPeriod = periods.find((period) => period.id === selectedPeriodId) ?? fallbackPeriod;
   const currentPeriodLabel = formatDateRange(selectedPeriod.current_start, selectedPeriod.current_end);
   const comparisonPeriodLabel = formatDateRange(selectedPeriod.comparison_start, selectedPeriod.comparison_end);
+
+  useEffect(() => {
+    const params = new URLSearchParams({
+      currentStart: selectedPeriod.current_start,
+      currentEnd: selectedPeriod.current_end,
+      comparisonStart: selectedPeriod.comparison_start,
+      comparisonEnd: selectedPeriod.comparison_end,
+    });
+
+    fetch(`/api/ga4-summary?${params.toString()}`)
+      .then((response) => {
+        if (!response.ok) throw new Error("GA4 API error");
+        return response.json();
+      })
+      .then((data) => setGa4FunnelMetrics(data))
+      .catch((error) => {
+        console.error(error);
+        setGa4FunnelMetrics([]);
+      });
+  }, [
+    selectedPeriod.current_start,
+    selectedPeriod.current_end,
+    selectedPeriod.comparison_start,
+    selectedPeriod.comparison_end,
+  ]);
+
+  useEffect(() => {
+    const params = new URLSearchParams({
+      currentStart: selectedPeriod.current_start,
+      currentEnd: selectedPeriod.current_end,
+      comparisonStart: selectedPeriod.comparison_start,
+      comparisonEnd: selectedPeriod.comparison_end,
+    });
+
+    fetch(`/api/meta-summary?${params.toString()}`)
+      .then((response) => {
+        if (!response.ok) throw new Error("Meta API error");
+        return response.json();
+      })
+      .then((data) => setMetaAdsSummary(data))
+      .catch((error) => {
+        console.error(error);
+        setMetaAdsSummary(null);
+      });
+  }, [
+    selectedPeriod.current_start,
+    selectedPeriod.current_end,
+    selectedPeriod.comparison_start,
+    selectedPeriod.comparison_end,
+  ]);
+
+  useEffect(() => {
+    const params = new URLSearchParams({
+      currentStart: selectedPeriod.current_start,
+      currentEnd: selectedPeriod.current_end,
+      comparisonStart: selectedPeriod.comparison_start,
+      comparisonEnd: selectedPeriod.comparison_end,
+    });
+
+    fetch(`/api/profitroom-summary?${params.toString()}`)
+      .then((response) => {
+        if (!response.ok) throw new Error("Profitroom API error");
+        return response.json();
+      })
+      .then((data) => setProfitroomSales(data))
+      .catch((error) => {
+        console.error(error);
+        setProfitroomSales(null);
+      });
+  }, [
+    selectedPeriod.current_start,
+    selectedPeriod.current_end,
+    selectedPeriod.comparison_start,
+    selectedPeriod.comparison_end,
+  ]);
+
+  useEffect(() => {
+    const params = new URLSearchParams({
+      currentStart: selectedPeriod.current_start,
+      currentEnd: selectedPeriod.current_end,
+      comparisonStart: selectedPeriod.comparison_start,
+      comparisonEnd: selectedPeriod.comparison_end,
+    });
+
+    fetch(`/api/google-ads-summary?${params.toString()}`)
+      .then((response) => response.json())
+      .then((data) => setGoogleAdsSummary(data))
+      .catch((error) => {
+        console.error(error);
+        setGoogleAdsSummary(null);
+      });
+  }, [
+    selectedPeriod.current_start,
+    selectedPeriod.current_end,
+    selectedPeriod.comparison_start,
+    selectedPeriod.comparison_end,
+  ]);
 
   const periodData = useMemo(() => {
     const period = demoPeriods.find((item) => item.id === selectedPeriodId) ?? demoPeriods[0];
@@ -361,10 +506,10 @@ export default function Home() {
         </header>
 
         {connection === "no_data" && <div className="page"><div className="page-heading"><div><span className="eyebrow">BRAK DANYCH</span><h1>Brak danych dla wybranego okresu.</h1><p>NO_DATA_FOR_SELECTED_PERIOD — aplikacja nie podstawi danych z innego okresu.</p></div></div></div>}
-        {connection !== "no_data" && view === "overview" && <Overview campaigns={campaigns} campaignMetrics={campaignMetrics} comparisonCampaignMetrics={comparisonCampaignMetrics} hotelSales={hotelSales} comparisonHotelSales={comparisonHotelSales} funnelMetrics={funnelMetrics} onCampaign={(id) => { setSelectedId(id); setView("campaign"); }} onAll={() => setView("campaigns")} />}
+        {connection !== "no_data" && view === "overview" && <Overview campaigns={campaigns} campaignMetrics={campaignMetrics} comparisonCampaignMetrics={comparisonCampaignMetrics} hotelSales={profitroomSales?.current ?? hotelSales} comparisonHotelSales={profitroomSales?.comparison ?? comparisonHotelSales} funnelMetrics={funnelMetrics} metaAdsSummary={metaAdsSummary} googleAdsSummary={googleAdsSummary} onCampaign={(id) => { setSelectedId(id); setView("campaign"); }} onAll={() => setView("campaigns")} />}
         {connection !== "no_data" && view === "campaigns" && <Campaigns campaigns={campaigns} onSelect={(id) => { setSelectedId(id); setView("campaign"); }} />}
         {connection !== "no_data" && view === "campaign" && <CampaignDetail campaign={selected} onBack={() => setView("campaigns")} onFunnel={() => setView("funnel")} />}
-        {connection !== "no_data" && view === "funnel" && <Funnel metrics={funnelMetrics} currentPeriodLabel={currentPeriodLabel} comparisonPeriodLabel={comparisonPeriodLabel} />}
+        {connection !== "no_data" && view === "funnel" && <Funnel metrics={ga4FunnelMetrics} currentPeriodLabel={currentPeriodLabel} comparisonPeriodLabel={comparisonPeriodLabel} />}
         {connection !== "no_data" && view === "channels" && <Channels paths={channelPaths} />}
       </main>
 
@@ -381,6 +526,8 @@ function Overview({
   hotelSales,
   comparisonHotelSales,
   funnelMetrics,
+  metaAdsSummary,
+  googleAdsSummary,
   onCampaign,
   onAll,
 }: {
@@ -390,6 +537,35 @@ function Overview({
   hotelSales: HotelSalesMetric[];
   comparisonHotelSales: HotelSalesMetric[];
   funnelMetrics: FunnelMetric[];
+  metaAdsSummary: {
+    current: {
+      spend: number;
+      impressions: number;
+      clicks: number;
+      link_clicks: number;
+      landing_page_views: number;
+      search: number;
+      add_to_cart: number;
+      initiate_checkout: number;
+      purchases: number;
+      purchase_value: number;
+      roas: number | null;
+    };
+    comparison: {
+      spend: number;
+      impressions: number;
+      clicks: number;
+      link_clicks: number;
+      landing_page_views: number;
+      search: number;
+      add_to_cart: number;
+      initiate_checkout: number;
+      purchases: number;
+      purchase_value: number;
+      roas: number | null;
+    } | null;
+  } | null;
+  googleAdsSummary: any;
   onCampaign: (id: string) => void;
   onAll: () => void;
 }) {
@@ -414,11 +590,19 @@ function Overview({
   const confirmedRoas = calculateRoas(confirmedRevenue, marketingSpend);
   const comparisonRoas = calculateRoas(comparisonRevenue, comparisonSpend);
   const metaId = "30000000-0000-4000-8000-000000000006";
-  const googleBrandId = "30000000-0000-4000-8000-000000000002";
   const meta = campaignMetrics.find((metric) => metric.campaign_id === metaId);
-  const previousMeta = comparisonCampaignMetrics.find((metric) => metric.campaign_id === metaId);
-  const googleBrand = campaignMetrics.find((metric) => metric.campaign_id === googleBrandId);
-  const previousGoogleBrand = comparisonCampaignMetrics.find((metric) => metric.campaign_id === googleBrandId);
+
+  const previousMeta = comparisonCampaignMetrics.find(
+    (metric) => metric.campaign_id === metaId
+  );
+
+  const googleBrand = googleAdsSummary?.current?.find(
+    (campaign: any) => campaign.campaign_name === "Demo Baltic Horizon | Brand"
+  );
+
+  const previousGoogleBrand = googleAdsSummary?.comparison?.find(
+    (campaign: any) => campaign.campaign_name === "Demo Baltic Horizon | Brand"
+  );
   const currentFunnel = funnelMetrics.find((metric) => metric.period_variant === "current");
   const salesByChannel = new Map(hotelSales.map((item) => [item.channel, item]));
   const previousSalesByChannel = new Map(comparisonHotelSales.map((item) => [item.channel, item]));
@@ -456,7 +640,12 @@ function Overview({
       <div className="v2-section-title"><span>02</span><div><small>META ADS</small><h2>Co widzi platforma vs co widzimy w lejku?</h2></div></div>
       <div className="meta-contrast">
         <article className="meta-direct"><div className="card-heading"><div><small>META ADS</small><h3>Wynik bezpośredni</h3></div><span>DIRECT RESULT: MODERATE</span></div>
-          <dl><div><dt>Spend</dt><dd>{money(meta?.spend ?? 0)}</dd></div><div><dt>Confirmed purchases</dt><dd>{meta?.package_bookings ?? 0}</dd></div><div><dt>Confirmed revenue</dt><dd>{money(meta?.booking_value ?? 0)}</dd></div><div><dt>Direct ROAS</dt><dd>{calculateRoas(meta?.booking_value ?? 0, meta?.spend ?? 0)?.toLocaleString("pl-PL", { maximumFractionDigits: 2 }) ?? "—"}</dd></div></dl>
+          <dl>
+            <div><dt>Spend</dt><dd>{money(metaAdsSummary?.current.spend ?? 0)}</dd></div>
+            <div><dt>Platform purchases</dt><dd>{metaAdsSummary?.current.purchases ?? 0}</dd></div>
+            <div><dt>Platform purchase value</dt><dd>{money(metaAdsSummary?.current.purchase_value ?? 0)}</dd></div>
+            <div><dt>Platform ROAS</dt><dd>{metaAdsSummary?.current.roas?.toLocaleString("pl-PL", { maximumFractionDigits: 2 }) ?? "—"}</dd></div>
+          </dl>
         </article>
         <article className="meta-quality"><div className="card-heading"><div><small>META ADS</small><h3>Jakość ruchu</h3></div>{step3Change !== "—" && <span className="step3-highlight">STEP 3 {step3Change}</span>}</div>
           <div className="intent-list">
@@ -479,7 +668,7 @@ function Overview({
       <div><span className="eyebrow">CO ZMIENIŁO SIĘ RÓWNOLEGLE?</span><h2>Szerszy obraz sprzedaży jest lepszy niż pojedynczy ROAS.</h2><p>Są to równoległe zmiany w analizowanym okresie. Nie oznaczają automatycznie, że sprzedaż Direct, Booking.com lub telefoniczna została wygenerowana przez Meta Ads.</p></div>
       <div className="signal-grid">
         <span><small>Meta Step 3</small><strong>{step3Change}</strong></span>
-        <span><small>Google Brand sessions</small><strong>{googleBrand && previousGoogleBrand ? delta(googleBrand.sessions, previousGoogleBrand.sessions) : "—"}</strong></span>
+        <span><small>Google Brand clicks</small><strong>{googleBrand && previousGoogleBrand ? delta(googleBrand.clicks, previousGoogleBrand.clicks) : "—"}</strong></span>
         <span><small>Direct bookings</small><strong>{delta(direct?.bookings ?? 0, previousSalesByChannel.get("Direct")?.bookings)}</strong></span>
         <span><small>Booking.com bookings</small><strong>{delta(booking?.bookings ?? 0, previousSalesByChannel.get("Booking.com")?.bookings)}</strong></span>
         <span><small>Phone bookings</small><strong>{delta(phone?.bookings ?? 0, previousSalesByChannel.get("Phone")?.bookings)}</strong></span>
@@ -528,22 +717,247 @@ function CampaignDetail({ campaign: c, onBack, onFunnel }: { campaign: Campaign;
   </div>
 }
 
-function Funnel({ metrics, currentPeriodLabel, comparisonPeriodLabel }: { metrics: FunnelMetric[]; currentPeriodLabel: string; comparisonPeriodLabel: string }) {
-  const current = metrics.find((metric) => metric.period_variant === "current");
-  const comparison = metrics.find((metric) => metric.period_variant === "comparison");
+function Funnel({
+  metrics,
+  currentPeriodLabel,
+  comparisonPeriodLabel,
+}: {
+  metrics: Array<{
+    period: "current" | "comparison";
+    sessions: number;
+    engaged_sessions: number;
+    sessions_over_60s: number;
+    apartment_open_sessions: number;
+    package_open_sessions: number;
+    step1: number;
+    step2: number;
+    step3: number;
+    purchases: number;
+  }>;
+  currentPeriodLabel: string;
+  comparisonPeriodLabel: string;
+}) {
+  const current = metrics.find((metric) => metric.period === "current");
+  const comparison = metrics.find((metric) => metric.period === "comparison");
+
   if (!current || !comparison) {
-    return <div className="page"><div className="page-heading"><div><span className="eyebrow">LEJEK ZACHOWAŃ</span><h1>Brak danych lejka dla wybranego okresu.</h1><p>{currentPeriodLabel} · okres porównawczy {comparisonPeriodLabel}</p></div></div></div>;
+    return (
+      <div className="page">
+        <div className="page-heading">
+          <div>
+            <span className="eyebrow">ZACHOWANIE UŻYTKOWNIKÓW</span>
+            <h1>Pobieram dane z BigQuery...</h1>
+            <p>{currentPeriodLabel} · okres porównawczy {comparisonPeriodLabel}</p>
+          </div>
+        </div>
+      </div>
+    );
   }
-  const fields: Array<[string, keyof Omit<FunnelMetric, "period_variant">]> = [["Wejścia na stronę", "entries"], ["Sesje zaangażowane", "engaged_sessions"], ["Otwarcie pakietu", "package_opens"], ["Wybór terminu", "date_searches"], ["step1", "step1"], ["step2", "step2"], ["step3", "step3"], ["Rezerwacja", "purchases"]];
+
+  const fields = [
+    ["Sesje", "sessions"],
+    ["Sesje zaangażowane ⓘ", "engaged_sessions"],
+    ["Sesje > 60 s", "sessions_over_60s"],
+    ["Otwarcie apartamentu", "apartment_open_sessions"],
+    ["Otwarcie pakietu", "package_open_sessions"],
+    ["Wybór terminu / Step 1", "step1"],
+    ["Dodatki / Step 2", "step2"],
+    ["Przejście do kasy / Step 3", "step3"],
+    ["Rezerwacja", "purchases"],
+  ] as const;
+
   const steps = fields.map(([label, field]) => {
     const value = current[field];
-    const share = current.entries ? `${((value / current.entries) * 100).toLocaleString("pl-PL", { maximumFractionDigits: 1 })}%` : "0%";
-    return [label, new Intl.NumberFormat("pl-PL").format(value), share, percentChange(value, comparison[field])];
+    const share = current.sessions
+      ? `${((value / current.sessions) * 100).toLocaleString("pl-PL", { maximumFractionDigits: 1 })}%`
+      : "0%";
+
+    return [
+      label,
+      new Intl.NumberFormat("pl-PL").format(value),
+      share,
+      percentChange(value, comparison[field]),
+    ];
   });
-  return <div className="page"><div className="page-heading"><div><span className="eyebrow">LEJEK ZACHOWAŃ</span><h1>Problem zaczyna się po wyborze terminu.</h1><p>Porównanie {currentPeriodLabel} z okresem {comparisonPeriodLabel}.</p></div><span className="confidence amber">● Największy spadek: step1 → step2</span></div>
-    <div className="funnel-card">{steps.map((s,i) => <div className={`funnel-step ${i===5 ? "critical":""}`} key={s[0]} style={{width:`${100-i*5}%`}}><span className="step-index">{String(i+1).padStart(2,"0")}</span><strong>{s[0]}</strong><b>{s[1]}</b><small>{s[2]} wejść</small><i className={s[3].includes("−") ? "bad-text":"good-text"}>{s[3]}</i>{i<steps.length-1 && <em>↓ {i===4 ? "spadek o 45% vs poprzedni okres" : ""}</em>}</div>)}</div>
-    <section className="diagnosis-card compact-card"><div className="diagnosis-icon">!</div><div><h3>Użytkownicy chcą sprawdzić termin, ale nie przechodzą dalej</h3><p>Do sprawdzenia: brak dostępności, minimalna długość pobytu, zmiana ceny, dodatkowe koszty lub błąd techniczny w step2.</p></div></section>
-  </div>
+
+  return (
+    <div className="page">
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">ZACHOWANIE I INTENCJA</span>
+          <h1>Jak użytkownicy zachowują się przed rezerwacją?</h1>
+          <p>Porównanie {currentPeriodLabel} z okresem {comparisonPeriodLabel}.</p>
+        </div>
+        <span className="confidence blue">● Dane GA4 z BigQuery</span>
+      </div>
+
+      <div className="funnel-card">
+        {steps.map((s, i) => (
+          <div
+            className={`funnel-step ${i >= 6 ? "critical" : ""}`}
+            key={s[0]}
+            style={{ width: `${100 - i * 5}%` }}
+            title={
+              s[0] === "Sesje zaangażowane ⓘ"
+                ? "GA4: sesja >10 s, minimum 2 odsłony lub co najmniej jedno kluczowe zdarzenie."
+                : undefined
+            }
+          >
+            <span className="step-index">{String(i + 1).padStart(2, "0")}</span>
+            <strong>{s[0]}</strong>
+            <b>{s[1]}</b>
+            <small>{s[2]} wszystkich sesji</small>
+            <i className={s[3].includes("−") ? "bad-text" : "good-text"}>
+              {s[3]} vs poprzedni okres
+            </i>
+          </div>
+        ))}
+      </div>
+
+      <section className="diagnosis-card compact-card">
+        <div className="diagnosis-icon">i</div>
+        <div>
+          <h3>To nie jest sztywny lejek krok po kroku</h3>
+          <p>
+            Otwarcie apartamentu, pakietu i wejście do silnika rezerwacyjnego mogą występować
+            niezależnie od siebie. Widok pokazuje sygnały zachowania i intencji użytkowników,
+            a nie obowiązkową kolejność wszystkich działań.
+          </p>
+        </div>
+      </section>
+
+      <section className="metric-definitions premium-definitions">
+        <div className="definitions-head">
+          <div>
+            <span className="eyebrow">DEFINICJE</span>
+            <h2>Jak czytać te wskaźniki?</h2>
+            <p>Krótko i po ludzku — co dokładnie oznaczają liczby widoczne powyżej.</p>
+          </div>
+        </div>
+
+        <div className="definitions-reading">
+          <span><strong>Udział</strong> = procent wszystkich sesji</span>
+          <span><strong>Zmiana</strong> = różnica względem poprzedniego okresu</span>
+        </div>
+
+        <div className="definition-group">
+          <div className="definition-group-title">
+            <span>01</span>
+            <div>
+              <strong>Ruch</strong>
+              <small>Czy użytkownicy realnie angażują się w wizytę?</small>
+            </div>
+          </div>
+
+          <div className="definition-cards three">
+            <article>
+              <span className="definition-number">01</span>
+              <strong>Sesje</strong>
+              <p>Wszystkie rozpoczęte sesje w analizowanym okresie.</p>
+            </article>
+
+            <article>
+              <span className="definition-number">02</span>
+              <strong>Sesje zaangażowane</strong>
+              <p>Sesje spełniające kryteria zaangażowania GA4.</p>
+              <small className="definition-hint">Więcej niż zwykłe wejście na stronę.</small>
+            </article>
+
+            <article>
+              <span className="definition-number">03</span>
+              <strong>Sesje &gt; 60 s</strong>
+              <p>Sesje z ponad minutą aktywnego zaangażowania.</p>
+              <small className="definition-hint">Mocniejszy sygnał zainteresowania ofertą.</small>
+            </article>
+          </div>
+        </div>
+
+        <div className="definition-group">
+          <div className="definition-group-title">
+            <span>02</span>
+            <div>
+              <strong>Zainteresowanie ofertą</strong>
+              <small>Czy użytkownik zaczyna eksplorować konkretną ofertę?</small>
+            </div>
+          </div>
+
+          <div className="definition-cards two">
+            <article>
+              <span className="definition-number">04</span>
+              <strong>Otwarcie apartamentu</strong>
+              <p>Sesje, w których użytkownik otworzył szczegóły apartamentu.</p>
+            </article>
+
+            <article>
+              <span className="definition-number">05</span>
+              <strong>Otwarcie pakietu</strong>
+              <p>Sesje, w których użytkownik otworzył szczegóły pakietu.</p>
+            </article>
+          </div>
+        </div>
+
+        <div className="definition-group">
+          <div className="definition-group-title">
+            <span>03</span>
+            <div>
+              <strong>Rezerwacja</strong>
+              <small>Jak daleko użytkownik dociera w silniku rezerwacyjnym?</small>
+            </div>
+          </div>
+
+          <div className="definition-cards four">
+            <article>
+              <span className="definition-number">06</span>
+              <strong>Step 1</strong>
+              <p>Wybór terminu i pokoju.</p>
+            </article>
+
+            <article>
+              <span className="definition-number">07</span>
+              <strong>Step 2</strong>
+              <p>Przejście do wyboru dodatków.</p>
+            </article>
+
+            <article>
+              <span className="definition-number">08</span>
+              <strong>Step 3</strong>
+              <p>Przejście do etapu finalizacji rezerwacji.</p>
+            </article>
+
+            <article>
+              <span className="definition-number">09</span>
+              <strong>Rezerwacja</strong>
+              <p>Sesje zakończone zdarzeniem purchase.</p>
+            </article>
+          </div>
+        </div>
+
+        <div className="engagement-definition">
+          <div className="engagement-icon">i</div>
+          <div>
+            <strong>Jak liczymy sesję zaangażowaną?</strong>
+            <p>
+              Sesja jest zaangażowana, gdy trwa dłużej niż 10 sekund,
+              ma co najmniej 2 odsłony albo zawiera co najmniej jedno
+              kluczowe zdarzenie skonfigurowane w GA4.
+            </p>
+          </div>
+        </div>
+
+        <details className="methodology-details">
+          <summary>Szczegóły metodologii</summary>
+          <div>
+            <p>
+              Kluczowe zdarzenia My Story Sopot:
+              conversion_event_contact, form_submit, open_apartment_details,
+              open_package_details, purchase, step1_dates_and_rooms,
+              step2_extras, step3_confirmation, step4_payment_confirmation.
+            </p>
+          </div>
+        </details>
+      </section>
+    </div>
+  );
 }
 
 function Channels({ paths }: { paths: ChannelPath[] }) {

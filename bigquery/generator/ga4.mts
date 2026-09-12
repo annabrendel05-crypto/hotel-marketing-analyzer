@@ -5,13 +5,18 @@ import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { buildManifest, serializeManifest } from './manifest.mts';
 import { validateConfig, type ScenarioConfig } from './config.mts';
-import { hash, randomStream, ga4SessionId } from './random.mts';
+import { hash, randomAt, randomStream, ga4SessionId } from './random.mts';
 import { calendar, warsawTimestamp } from './time.mts';
 import { sourceWeights } from './signals.mts';
 import { largestRemainder } from './allocation.mts';
 import { ga4Schema } from './ga4-schema.mts';
 
 export const GA4_VERSION = 'ga4-demo-generator-v1';
+// Version the session policy separately, keeping the existing event allocation/IDs stable.
+export const GA4_SESSION_POLICY = 'session-engagement-v2';
+export const ga4KeyEvents: readonly string[] = ['conversion_event_contact', 'form_submit',
+  'open_apartment_details', 'open_package_details', 'purchase', 'step1_dates_and_rooms',
+  'step2_extras', 'step3_confirmation', 'step4_payment_confirmation'];
 export const ga4Targets = { session_start: 92123, page_view: 230810, user_engagement: 124773,
   step1_dates_and_rooms: 36207, step2_extras: 1940, step3_confirmation: 513,
   purchase: 80, click_tel: 590, form_submit: 237, open_apartment_details: 13537, open_package_details: 6053 } as const;
@@ -67,12 +72,32 @@ export function* generateGA4(config: ScenarioConfig): Generator<GA4Row> {
       const mobile = rng() < 0.8745;
       let channelRoll = rng() * 100;
       const channel = ga4Channels.find(ch => (channelRoll -= ch[1]) < 0) ?? ga4Channels[7];
+
+      const sessionCampaign = channel[0] === 'Paid Social'
+        ? (randomAt(c, 'ga4:v1:paid-social-campaign', index) < 0.65
+          ? 'Demo Baltic Horizon | prospecting'
+          : 'Demo Baltic Horizon | remarketing')
+        : null;
+
       const start = base + Math.floor(rng() * 14 * 3600) * 1000;
       names.sort((a,b) => events.indexOf(a) - events.indexOf(b));
+      // Independent draws preserve all existing event counts, devices and channel draws.
+      // Synthetic mix, not a reference benchmark: 25% short, 50% medium, 25% long.
+      const band = randomAt(c, GA4_SESSION_POLICY, index);
+      const fraction = randomAt(c, `${GA4_SESSION_POLICY}:duration`, index);
+      const duration = Math.floor(band < 0.25 ? 1000 + fraction * 7000 :
+        band < 0.75 ? 10000 + fraction * 48000 : 61000 + fraction * 179000);
+      const lastEngagement = names.lastIndexOf('user_engagement');
+      const engaged = duration >= 10000 || names.filter(n => n === 'page_view').length >= 2 || names.some(n => ga4KeyEvents.includes(n));
+      let previousEngagementOffset = 0;
       for (const [ordinal, name] of names.entries()) {
+        // Accumulated engagement never exceeds elapsed time. Later stages remain ordered.
+        const offset = lastEngagement > 0 ? (ordinal <= lastEngagement ?
+          Math.floor(duration * ordinal / lastEngagement) : duration + (ordinal - lastEngagement) * 100) :
+          Math.floor(duration * ordinal / Math.max(1, names.length - 1));
         const row = empty(ga4Schema) as GA4Row;
         row.event_date = day.replaceAll('-', '');
-        row.event_timestamp = (BigInt(start + ordinal * 10000) * 1000n).toString();
+        row.event_timestamp = (BigInt(start + offset) * 1000n).toString();
         row.event_name = name;
         row.user_pseudo_id = limited ? null : `demo_browser_${prefix}_${index}`;
         row.stream_id = 'demo_web_001'; row.platform = 'WEB';
@@ -81,15 +106,32 @@ export function* generateGA4(config: ScenarioConfig): Generator<GA4Row> {
         row.device!.operating_system = mobile ? 'Android' : 'Windows';
         row.device!.web_info = {browser:'Chrome', browser_version:null, hostname:'baltic-horizon.example'};
         // Unique devices in minimal v1; first observed acquisition equals first session.
-        row.traffic_source = {name:null, medium:channel[3], source:channel[2]};
+        row.traffic_source = {
+          name: sessionCampaign,
+          medium: channel[3],
+          source: channel[2],
+        };
+
+        const collected = row.collected_traffic_source!;
+        collected.manual_source = channel[2];
+        collected.manual_medium = channel[3];
+        collected.manual_campaign_name = sessionCampaign;
+
         const cross = row.session_traffic_source_last_click!.cross_channel_campaign!;
-        cross.source = channel[2]; cross.medium = channel[3];
-        cross.default_channel_group = channel[0]; cross.primary_channel_group = channel[0];
+        cross.source = channel[2];
+        cross.medium = channel[3];
+        cross.campaign_name = sessionCampaign;
+        cross.default_channel_group = channel[0];
+        cross.primary_channel_group = channel[0];
         const param = (key: string, string_value: string | null, int_value: string | null) =>
           ({key, value:{string_value, int_value, float_value:null, double_value:null}});
         row.event_params = [param('page_location', 'https://baltic-horizon.example/', null)];
-        if (!limited) row.event_params.push(param('ga_session_id', null, sessionId));
-        if (name === 'user_engagement') row.event_params.push(param('engagement_time_msec', null, '10000'));
+        if (!limited || name === 'session_start') row.event_params.push(param('ga_session_id', null, sessionId));
+        row.event_params.push(param('session_engaged', null, engaged ? '1' : '0'));
+        if (name === 'user_engagement') {
+          row.event_params.push(param('engagement_time_msec', null, String(offset - previousEngagementOffset)));
+          previousEngagementOffset = offset;
+        }
         row.ecommerce = null; // Revenue and transaction identity are uncalibrated; never copied from Profitroom.
         yield row;
       }
@@ -135,7 +177,7 @@ export async function exportGA4(config: ScenarioConfig, directory: string) {
   }
   await pipeline(chunks(), createWriteStream(join(directory, path), { flags: 'wx' }));
   const manifest = { ...buildManifest(c, [{ path, status: 'present', sha256: sha.digest('hex'), bytes }]),
-    source_generator_version: GA4_VERSION, source_schema_hash: hash(ga4Schema), records,
+    source_generator_version: GA4_VERSION, session_policy_version: GA4_SESSION_POLICY, source_schema_hash: hash(ga4Schema), records,
     tables: [{ path, table: 'ga4.events_demo' }],
   };
   await writeFile(join(directory, 'manifest.json'), serializeManifest(manifest), { flag: 'wx' });
