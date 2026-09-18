@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "node --test lib/marketing-metrics.test.ts lib/campaign-data-sufficiency.test.ts tests/rendered-html.test.mjs",
+    "test": "node --import ./tests/diagnostics/ts-resolver.mjs --test tests/diagnostics/*.test.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {

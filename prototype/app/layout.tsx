@@ -1,9 +1,17 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Lato, Playfair_Display } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const lato = Lato({
+  variable: "--font-lato",
+  subsets: ["latin"],
+  weight: ["400", "700", "900"],
+});
+const playfairDisplay = Playfair_Display({
+  variable: "--font-playfair",
+  subsets: ["latin"],
+});
 
 export const metadata: Metadata = {
   title: "Hotel Campaign Intelligence — prototyp",
@@ -12,5 +20,11 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="pl"><body className={`${geistSans.variable} ${geistMono.variable}`}>{children}</body></html>;
+  return (
+    <html lang="pl">
+      <body className={`${lato.variable} ${playfairDisplay.variable} ${geistMono.variable}`}>
+        {children}
+      </body>
+    </html>
+  );
 }

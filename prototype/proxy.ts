@@ -25,8 +25,12 @@ export async function proxy(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
   const isLogin = request.nextUrl.pathname === "/login";
+  const isApi = request.nextUrl.pathname.startsWith("/api/");
 
   if (!user && !isLogin) {
+    if (isApi) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
@@ -38,5 +42,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/login"],
+  matcher: ["/", "/login", "/api/:path*"],
 };
