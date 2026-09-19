@@ -39,6 +39,8 @@ Dashboard i endpointy aplikacji są dostępne wyłącznie dla uwierzytelnionych 
 
 Aplikacja demonstracyjna korzysta z danych syntetycznych, których struktura odwzorowuje rzeczywiste źródła. Surowe eksporty i robocze pliki kalibracyjne nie są publikowane w repozytorium. Dokumentacja nie ujawnia szczegółowych reguł kalibracji ani pełnego procesu generowania danych.
 
+Aktualna wersja publiczna korzysta z danych syntetycznych przechowywanych w BigQuery. Architektura aplikacji została przygotowana tak, aby warstwę demonstracyjną można było zastąpić danymi rzeczywistymi z GA4, Meta Ads, Google Ads i systemu rezerwacyjnego bez zmiany logiki diagnostycznej i interfejsu.
+
 ## Uruchomienie lokalne
 
 Wymagane są Node.js 24.x, npm, dostęp do BigQuery i projekt Supabase. OpenAI API jest opcjonalne — bez niego raporty pozostają dostępne, a funkcje AI korzystają z obsługi niedostępności usługi.
