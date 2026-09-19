@@ -1,159 +1,92 @@
-# vinext-starter
+# Hotel Marketing Analyzer
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+Hotel Marketing Analyzer (HMA) to aplikacja do analizy marketingu i sprzedaży hotelowej. Łączy dane z GA4, Meta Ads, Google Ads i Profitroom, aby pokazać sprzedaż, lejek rezerwacyjny, efektywność kampanii oraz najważniejsze problemy biznesowe.
 
-## Prerequisites
+## Problem biznesowy
 
-- Node.js `>=22.13.0`
+Skuteczności marketingu hotelu nie da się ocenić na podstawie jednej platformy reklamowej. Goście korzystają z różnych kanałów, a systemy analityczne, reklamowe i rezerwacyjne mierzą różne etapy ścieżki. HMA zestawia te perspektywy, nie utożsamiając konwersji raportowanych przez reklamy z potwierdzoną sprzedażą.
 
-## Quick Start
+## Architektura
+
+```text
+GA4 / Meta Ads / Google Ads / Profitroom
+  → BigQuery
+  → backend HMA
+  → modularny silnik diagnostyczny
+  → Priority Engine
+  → UI
+  → warstwa językowa AI / Czat AI
+```
+
+BigQuery stanowi warstwę danych. Profitroom jest źródłem potwierdzonej sprzedaży, a Meta Ads i Google Ads dostarczają danych raportowanych przez platformy reklamowe. Silnik diagnostyczny ustala diagnozy, a Priority Engine ich priorytety. AI otrzymuje gotowe wyniki i wyjaśnia je prostym językiem — nie ustala progów, diagnoz ani priorytetów.
+
+## Główne widoki
+
+- Podsumowanie okresu
+- Sprzedaż
+- Lejek
+- Meta Ads
+- Google Ads
+- Jakość danych
+- Rola kanałów
+- Czat AI
+
+## Dane demonstracyjne
+
+Aplikacja demonstracyjna korzysta z danych syntetycznych, których struktura odwzorowuje rzeczywiste źródła. Surowe eksporty i robocze pliki kalibracyjne nie są publikowane w repozytorium. Dokumentacja nie ujawnia szczegółowych reguł kalibracji ani pełnego procesu generowania danych.
+
+## Uruchomienie lokalne
+
+Wymagane są Node.js 24.x, npm, dostęp do BigQuery i projekt Supabase. OpenAI API jest opcjonalne — bez niego raporty pozostają dostępne, a funkcje AI korzystają z obsługi niedostępności usługi.
 
 ```bash
+cd prototype
 npm install
-npm run dev
+```
+
+## Wymagane zmienne środowiskowe
+
+| Zmienna | Wymagana | Zastosowanie |
+| --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Tak | Adres projektu Supabase używanego do logowania |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Tak | Publiczny klucz Supabase używany przez aplikację |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Tak | Ścieżka do pliku JSON konta serwisowego z dostępem do BigQuery |
+| `OPENAI_API_KEY` | Nie | Obsługa funkcji AI i Czatu AI |
+| `OPENAI_AI_SUMMARY_MODEL` | Nie | Wybór modelu OpenAI używanego przez warstwę AI |
+
+- `NEXT_PUBLIC_*` są zmiennymi publicznymi po stronie frontendu i nie powinny zawierać sekretów.
+- `OPENAI_API_KEY` oraz plik Google credentials są sekretami i nie mogą trafiać do repozytorium.
+- Brak `OPENAI_API_KEY` nie blokuje działania raportów; niedostępne są tylko funkcje AI.
+
+Utwórz plik `.env.local`:
+
+```dotenv
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+OPENAI_API_KEY=
+OPENAI_AI_SUMMARY_MODEL=
+```
+
+Zmienne `OPENAI_*` są opcjonalne. `GOOGLE_APPLICATION_CREDENTIALS` musi wskazywać na plik JSON z credentials konta serwisowego z dostępem do BigQuery. Następnie uruchom:
+
+```bash
+GOOGLE_APPLICATION_CREDENTIALS="/ścieżka/do/service-account.json" npm run dev
+```
+
+Aplikacja będzie dostępna pod adresem [http://localhost:3000](http://localhost:3000). Nie dodawaj plików credentials ani `.env.local` do repozytorium.
+
+## Testy
+
+Projekt zawiera obecnie 16 testów regresyjnych modularnego silnika diagnostycznego i Priority Engine.
+
+```bash
+npm test
+npx tsc --noEmit
 npm run build
 ```
 
-This starter does not use `wrangler.jsonc`.
+## Produkcja i technologie
 
-## Included Shape
+Wersja produkcyjna: [Hotel Marketing Analyzer na Railway](https://hotel-marketing-analyzer-production.up.railway.app/).
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
-```
-
-## Optional Dispatch-Owned ChatGPT Sign-In
-
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
-
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
-## Tydzień 4 – Reset & Re-prompt
-
-### Aktualne mikrozadanie
-
-Celem zadania jest stworzenie niezależnej reguły sprawdzającej,
-czy kampania ma wystarczającą ilość danych do oceny.
-
-### Dane wejściowe
-
-- `spend` – wydatki kampanii w PLN,
-- `sessions` – liczba sesji kampanii.
-
-### Reguła biznesowa
-
-Dane są wystarczające, gdy:
-
-- `spend >= 150`
-
-LUB
-
-- `sessions >= 150`.
-
-### Możliwe wyniki
-
-- `SUFFICIENT_DATA`
-- `INSUFFICIENT_DATA`
-
-### Przypadki graniczne
-
-- `spend = 150` oraz `sessions < 150` → `SUFFICIENT_DATA`
-- `spend < 150` oraz `sessions = 150` → `SUFFICIENT_DATA`
-- `spend = 149.99` oraz `sessions = 149` → `INSUFFICIENT_DATA`
-
-### Zakres zadania
-
-Agent może utworzyć maksymalnie dwa pliki:
-
-- `campaign-data-sufficiency.ts`
-- `campaign-data-sufficiency.test.ts`
-
-Agent nie może:
-
-- zmieniać komponentów React,
-- zmieniać integracji z Supabase,
-- zmieniać istniejącego interfejsu,
-- przebudowywać całej aplikacji,
-- dodawać innych reguł oceny kampanii.
-
-Walidacja niepoprawnych danych wejściowych pozostaje poza zakresem tego mikrozadania.
-
-### Kryterium ukończenia
-
-Zadanie jest ukończone, gdy testy sprawdzające:
-
-- próg wydatków,
-- próg sesji,
-- operator LUB,
-- wartości dokładnie na granicy,
-- wartości poniżej granicy
-
-przechodzą bez uruchamiania Reacta, Supabase ani zewnętrznego API.
+Technologie: Next.js, TypeScript, BigQuery, Supabase, OpenAI API i Railway.
