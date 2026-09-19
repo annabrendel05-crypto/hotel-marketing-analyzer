@@ -735,21 +735,21 @@ function SummaryView({ diagnostics }: { diagnostics: DiagnosticsResponse }) {
             <h2>Czy koszt marketingu jest pod kontrolą?</h2>
             <p className="marketing-period-summary">
               {currentMarketingCostRevenueShare === null
-                ? `Marketing kosztował ${formatCurrency(currentMarketingCost)}. Brak przychodu online do obliczenia udziału kosztu.`
-                : `Marketing kosztował ${formatCurrency(currentMarketingCost)} i stanowił ${formatShare(currentMarketingCostRevenueShare)} przychodu online.`}
+                ? `Przychód online wyniósł ${formatCurrency(currentSales.active_online_revenue)} przy wydatkach reklamowych ${formatCurrency(currentMarketingCost)}. Nie można obliczyć udziału marketingu w potwierdzonym przychodzie online.`
+                : `Przychód online wyniósł ${formatCurrency(currentSales.active_online_revenue)} przy wydatkach reklamowych ${formatCurrency(currentMarketingCost)}. Koszt reklam stanowił ${formatShare(currentMarketingCostRevenueShare)} potwierdzonego przychodu online.`}
             </p>
           </div>
         </div>
         <div className="marketing-cost-kpis">
           <article>
+            <span>Przychód online z rezerwacji</span>
+            <strong>{formatCurrency(currentSales.active_online_revenue)}</strong>
+            <small>Direct + OTA, aktywne rezerwacje Profitroom</small>
+          </article>
+          <article>
             <span>Łączny koszt reklam</span>
             <strong>{formatCurrency(currentMarketingCost)}</strong>
             <small>Meta Ads + Google Ads</small>
-          </article>
-          <article>
-            <span>Koszt marketingu / aktywną rezerwację</span>
-            <strong>{formatNullableCurrency(currentMarketingCostPerBooking)}</strong>
-            <small>średni koszt marketingu przypadający na aktywną rezerwację</small>
           </article>
           <article>
             <span>Koszt reklam / przychód online</span>
