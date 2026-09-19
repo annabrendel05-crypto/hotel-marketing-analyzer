@@ -51,6 +51,7 @@ type ProfitroomDailySeriesPoint = {
 type DiagnosticsResponse = {
   input: DiagnosticInput;
   result: PriorityEngineResult;
+  profitroom_data_from: string | null;
   series: {
     profitroom: {
       current: ProfitroomDailySeriesPoint[];
@@ -2794,6 +2795,7 @@ export default function Home() {
   const [isAskDataOpen, setIsAskDataOpen] = useState(false);
 
   const activeReport = reportViews.find((report) => report.id === activeView) ?? reportViews[0];
+  const profitroomDataFrom = diagnostics?.profitroom_data_from ?? null;
   const profitroomDataThrough =
     diagnostics?.input.current.profitroom.profitroom_data_through ?? null;
   const currentStartMax = profitroomDataThrough && profitroomDataThrough < period.currentEnd
@@ -2937,9 +2939,9 @@ export default function Home() {
                 </label>
                 <button disabled={requestStatus === "loading"} type="submit">Zastosuj</button>
               </form>
-              {profitroomDataThrough && (
+              {profitroomDataFrom && profitroomDataThrough && (
                 <small className="topbar-data-through">
-                  Dane sprzedażowe dostępne do: {formatDate(profitroomDataThrough)}
+                  Dane sprzedażowe dostępne: {formatDate(profitroomDataFrom)} – {formatDate(profitroomDataThrough)}
                 </small>
               )}
             </div>

@@ -698,6 +698,17 @@ export async function getGa4DiagnosticInputSummary(
 
 const PROFITROOM_DEMO_DATA_THROUGH = "2026-08-29";
 
+export async function getProfitroomDataFrom(): Promise<string | null> {
+  const query = `
+    SELECT FORMAT_DATE('%Y-%m-%d', MIN(DATE(\`Data rezerwacji\`, "Europe/Warsaw"))) AS data_from
+    FROM \`hotel-marketing-analyzer-demo.profitroom.reservations_demo\`
+  `;
+
+  const [rows] = await bigquery.query({ query, location: "EU" });
+
+  return rows[0]?.data_from ?? null;
+}
+
 export type ProfitroomDailySeriesPoint = {
   date: string;
   active_bookings: number;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getGoogleAdsDetail, getMetaDetail, getProfitroomDailySeries } from "@/lib/bigquery";
+import { getGoogleAdsDetail, getMetaDetail, getProfitroomDataFrom, getProfitroomDailySeries } from "@/lib/bigquery";
 import { getDiagnosticInput } from "@/lib/diagnostics/adapter";
 import { runDiagnostics } from "@/lib/diagnostics/index";
 
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const [input, currentSeries, comparisonSeries, metaDetail, googleAdsDetail] =
+    const [input, currentSeries, comparisonSeries, metaDetail, googleAdsDetail, profitroomDataFrom] =
       await Promise.all([
         getDiagnosticInput(
           currentStart,
@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
         getProfitroomDailySeries(comparisonStart, comparisonEnd),
         getMetaDetail(currentStart, currentEnd),
         getGoogleAdsDetail(currentStart, currentEnd),
+        getProfitroomDataFrom(),
       ]);
 
     const result =
@@ -65,6 +66,7 @@ export async function GET(request: NextRequest) {
       },
       meta_detail: metaDetail,
       google_ads_detail: googleAdsDetail,
+      profitroom_data_from: profitroomDataFrom,
     });
   } catch (error) {
     console.error(
