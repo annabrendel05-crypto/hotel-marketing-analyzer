@@ -22,6 +22,8 @@ BigQuery stanowi warstwę danych. Profitroom jest źródłem potwierdzonej sprze
 
 Supabase jest wykorzystywany wyłącznie do uwierzytelniania użytkowników. Dane raportowe HMA są pobierane z BigQuery.
 
+Dashboard i endpointy aplikacji są dostępne wyłącznie dla uwierzytelnionych użytkowników posiadających aktywną sesję Supabase.
+
 ## Główne widoki
 
 - Podsumowanie okresu
