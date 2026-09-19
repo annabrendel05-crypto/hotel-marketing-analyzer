@@ -512,6 +512,14 @@ function SummaryView({ diagnostics }: { diagnostics: DiagnosticsResponse }) {
   );
   const currentMarketingCost = input.current.meta.spend + input.current.google_ads.cost;
   const comparisonMarketingCost = input.comparison.meta.spend + input.comparison.google_ads.cost;
+  const currentMarketingCostPerBooking = calculateRatio(
+    currentMarketingCost,
+    currentSales.active_online_bookings,
+  );
+  const comparisonMarketingCostPerBooking = calculateRatio(
+    comparisonMarketingCost,
+    comparisonSales.active_online_bookings,
+  );
   const kpis = [
     {
       change: formatPercentChange(currentSales.active_online_bookings, comparisonSales.active_online_bookings),
@@ -545,6 +553,16 @@ function SummaryView({ diagnostics }: { diagnostics: DiagnosticsResponse }) {
         comparisonSales.active_online_revenue,
       ),
       value: formatCurrency(currentMarketingCost),
+    },
+    {
+      change: currentMarketingCostPerBooking === null || comparisonMarketingCostPerBooking === null
+        ? "—"
+        : formatPercentChange(currentMarketingCostPerBooking, comparisonMarketingCostPerBooking),
+      comparison: formatNullableCurrency(comparisonMarketingCostPerBooking),
+      description: "Meta + Google / wszystkie aktywne rezerwacje online (Direct + OTA)",
+      label: "Koszt marketingu / rezerwację",
+      tone: "neutral" as const,
+      value: formatNullableCurrency(currentMarketingCostPerBooking),
     },
   ];
   const salesComment = result.diagnostics.find(
@@ -583,10 +601,6 @@ function SummaryView({ diagnostics }: { diagnostics: DiagnosticsResponse }) {
   const currentGoogleRoas = calculateRatio(
     input.current.google_ads.conversion_value,
     input.current.google_ads.cost,
-  );
-  const currentMarketingCostPerBooking = calculateRatio(
-    currentMarketingCost,
-    currentSales.active_online_bookings,
   );
   const currentMarketingCostRevenueShare = calculateShare(
     currentMarketingCost,
@@ -630,6 +644,7 @@ function SummaryView({ diagnostics }: { diagnostics: DiagnosticsResponse }) {
           <article className="summary-kpi" key={kpi.label}>
             <span>{kpi.label}</span>
             <strong>{kpi.value}</strong>
+            {kpi.description && <p className="summary-kpi-description">{kpi.description}</p>}
             <div>
               <b className={`tone-${kpi.tone}`}>{kpi.change}</b>
               <small>vs poprzedni okres · {kpi.comparison}</small>
