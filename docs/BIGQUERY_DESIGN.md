@@ -14,36 +14,38 @@ Oznaczenia: **USTALONE** oznacza zapis kontraktu lub jawną decyzję właścicie
 
 Wcześniejsza architektura z datasetami `hma_raw`, `hma_mart` i `hma_ops` została zastąpiona. Nie są one częścią bieżącego projektu. Źródła otrzymują osobne datasety, a hma_core skupia czyszczenie, ujednolicanie i łączenie. **USTALONE:** pomocnicze agregaty, tabele oczyszczone i tabele łączące źródła znajdują się w hma_core. Rejestry operacyjne, historia uruchomień i osobne logi importów pozostają poza zakresem v1; hma_core ich nie zawiera. hma_app zawiera wyłącznie końcowe bezpieczne widoki. Jest to zmiana projektu dokumentacji, bez fizycznej migracji zasobów.
 
-Kontrakt analityczny 0.2, definicje KPI, Supabase jako miejsce konfiguracji, ręczne wdrażanie i zabezpieczenia kosztów pozostają aktualne. Poprzednia akceptacja projektu 0.2 jest historyczna; wersja 0.3 została zaakceptowana po zmianie datasetów.
+Kontrakt analityczny 0.2 i przedstawione niżej założenie konfiguracji raportowej w Supabase dokumentują wcześniejszy etap projektowy; nie opisują obecnego runtime. Poprzednia akceptacja projektu 0.2 jest historyczna; wersja 0.3 została zaakceptowana po zmianie datasetów.
 
 ## 1. Cel i wynik przeglądu repozytorium
 
 Celem jest przygotowanie jednej sprawdzalnej drogi od obserwacji źródłowej do liczby w aplikacji. Właścicielka hotelu ma widzieć, z czego wynika wskaźnik, na jaki okres się odnosi i dlaczego czasem pozostaje niedostępny. Programista otrzymuje ziarno danych, klucze, typy, etapy przetwarzania i kontrakt odczytu.
 
+**Aktualny stan implementacji:** BigQuery jest aktywną warstwą danych. Backend pobiera dane GA4, Meta Ads, Google Ads i Profitroom, a `/api/diagnostics` przygotowuje dane dla aplikacji i uruchamia modularny silnik diagnostyczny oraz Priority Engine. Supabase odpowiada wyłącznie za uwierzytelnianie użytkowników. Poniższy przegląd z 2026-09-06 jest historycznym punktem wyjścia, a nie opisem obecnego runtime.
+
 Historyczny punkt wyjścia z przeglądu 2026-09-06:
 
 - Gałąź `refactor/bigquery-foundation`; przed rozpoczęciem katalog roboczy czysty.
 - Ostatnie commity: `bb3e2dd` — akceptacja kontraktu; `826a6b3` — migracja na Next.js; `70d737b` — demo z Auth; `571f585` — usunięcie demonstracyjnego bloku API; `d2e99cd` — notatka o teście wdrożenia.
-- Root aplikacji: `prototype/`, standardowy Next.js 16.2.6, React 19.2.6, Node 24.x. Dashboard jest komponentem klienckim i korzysta z lokalnego `demo-data.ts` oraz stałych opisów.
-- Supabase w aktualnym kodzie obsługuje Auth. Docelowe członkostwo, role i konfiguracja hotelu są wymaganiem kontraktu, a ich implementacja pozostaje kolejnym zadaniem.
-- Repozytorium ma `01 Koncept/`, `docs/`, `supabase/` i `prototype/`. W `prototype/` są `app/`, `lib/`, `tests/`, `public/` oraz konfiguracje. Brakuje obecnych modeli lub połączenia BigQuery.
+- Root aplikacji: `prototype/`, standardowy Next.js 16.2.6, React 19.2.6, Node 24.x. W chwili przeglądu dashboard korzystał z lokalnego `demo-data.ts`; plik ten został później usunięty.
+- Supabase obsługiwał Auth. Ówczesne założenie o przyszłym członkostwie, rolach i konfiguracji hotelu w Supabase nie zostało przyjęte jako opis obecnego runtime.
+- W chwili przeglądu repozytorium miało `01 Koncept/`, `docs/`, `supabase/` i `prototype/`, a połączenie BigQuery nie było jeszcze gotowe. Historyczne pliki `supabase/` przeniesiono do `archive/supabase-legacy/`; BigQuery jest obecnie podłączone.
 
 ### 1.1. Przeczytane pliki i ich wpływ
 
 | Pliki | Znaczenie dla projektu |
 |---|---|
 | `docs/ANALYTICS_CONTRACT.md` — pełna treść | Normatywne definicje, sześć widoków daily, pytania Q01–Q09, pięć warunków linked_booking_roas |
-| `supabase/01_schema.sql` | Historyczny PostgreSQL: okresowe agregaty, UUID, NUMERIC, statusy i progi; model nie jest docelowym modelem BigQuery |
-| `supabase/02_seed_synthetic.sql` | Starszy syntetyczny scenariusz, rezerwacje i diagnozy bez jednostkowych identyfikatorów łączenia |
-| `supabase/03_audit.sql`, `04_audit_summary.sql`, `08_v2_audit.sql` | Inspiracja dla kontroli sum, jakości, zgodności hotelu i zakresu; ich wyników nie traktuje się jako wykonanych kontroli BigQuery |
-| `supabase/05_readonly_policies.sql` | Historyczny publiczny odczyt danych syntetycznych; model dostępu aplikacji BigQuery będzie serwerowy |
-| `supabase/06_demo_diagnosis_rpc.sql` | Historyczne RPC diagnozy; komentarze pozostają poza faktami BigQuery |
-| `supabase/07_v2_periods_and_sales.sql`, `supabase/README.md` | Dwa okresy, dodatkowe pola i kanały; migracja pozostawia starsze kampanie i narracje, więc nie stanowi jednoznacznego seeda v1 |
-| `prototype/lib/demo-data.ts` | Obecne nazwy pól, sumy kontrolne, agregat Meta i braki porównań |
-| `prototype/lib/marketing-metrics.ts`, `campaign-data-sufficiency.ts` | Istniejące wzory i demonstracyjne progi; docelowo ocena jest serwerowa |
-| `prototype/app/page.tsx` — typy, filtrowanie i obliczenia | Obecne agregaty okresowe, `number`, stałe statusy i narracje; przyszły adapter musi zachować semantykę kontraktu zamiast odtwarzać stare etykiety |
-| `prototype/proxy.ts`, `lib/supabase/client.ts`, `lib/supabase/server.ts` | Weryfikacja sesji i granica klient/serwer; kontrola dostępu do hotelu pozostaje wymagana przed odczytem BigQuery |
-| `prototype/package.json`, `tsconfig.json` | Runtime i typy; pakiet BigQuery będzie osobnym późniejszym zadaniem |
+| `archive/supabase-legacy/01_schema.sql` | Historyczny PostgreSQL: okresowe agregaty, UUID, NUMERIC, statusy i progi; model nie jest docelowym modelem BigQuery |
+| `archive/supabase-legacy/02_seed_synthetic.sql` | Starszy syntetyczny scenariusz, rezerwacje i diagnozy bez jednostkowych identyfikatorów łączenia |
+| `archive/supabase-legacy/03_audit.sql`, `04_audit_summary.sql`, `08_v2_audit.sql` | Inspiracja dla kontroli sum, jakości, zgodności hotelu i zakresu; ich wyników nie traktuje się jako wykonanych kontroli BigQuery |
+| `archive/supabase-legacy/05_readonly_policies.sql` | Historyczny publiczny odczyt danych syntetycznych; obecny odczyt aplikacji z BigQuery odbywa się po stronie serwera |
+| `archive/supabase-legacy/06_demo_diagnosis_rpc.sql` | Historyczne RPC diagnozy; nie jest wywoływane przez obecną aplikację |
+| `archive/supabase-legacy/07_v2_periods_and_sales.sql`, `archive/supabase-legacy/README.legacy.md` | Dwa okresy, dodatkowe pola i kanały; migracja pozostawia starsze kampanie i narracje, więc nie stanowi jednoznacznego seeda v1 |
+| `prototype/lib/demo-data.ts` (usunięty) | Dawne nazwy pól, sumy kontrolne, agregat Meta i braki porównań; nie jest źródłem danych obecnego UI |
+| `prototype/lib/marketing-metrics.ts`, `campaign-data-sufficiency.ts` (usunięte) | Dawne wzory i demonstracyjne progi; obecna diagnostyka działa w modularnym silniku serwerowym |
+| `prototype/app/page.tsx` — ówczesne typy, filtrowanie i obliczenia | Historyczny stan frontendu; obecnie korzysta on z odpowiedzi `/api/diagnostics` |
+| `prototype/proxy.ts`, `lib/supabase/client.ts`, `lib/supabase/server.ts` | Aktualna weryfikacja sesji i granica klient/serwer; Supabase służy wyłącznie do auth |
+| `prototype/package.json`, `tsconfig.json` | Runtime i typy; pakiet BigQuery jest już podłączony |
 
 Zinwentaryzowano śledzone pliki i konfiguracje bez odczytu plików środowiska. Historyczne tabele `analysis_periods`, `diagnoses` i `evaluation_thresholds` nie są kopiowane jako analityczne tabele BigQuery. `package_bookings` i `booking_value` mają niepotwierdzoną semantykę; ich przypisanie jest O09. Źródłowa tabela „Meta Ads — Łącznie” jest agregatem, a nie odrębną kampanią do dodania do sumy kampanii.
 

@@ -20,6 +20,8 @@ GA4 / Meta Ads / Google Ads / Profitroom
 
 BigQuery stanowi warstwę danych. Profitroom jest źródłem potwierdzonej sprzedaży, a Meta Ads i Google Ads dostarczają danych raportowanych przez platformy reklamowe. Silnik diagnostyczny ustala diagnozy, a Priority Engine ich priorytety. AI otrzymuje gotowe wyniki i wyjaśnia je prostym językiem — nie ustala progów, diagnoz ani priorytetów.
 
+Supabase jest wykorzystywany wyłącznie do uwierzytelniania użytkowników. Dane raportowe HMA są pobierane z BigQuery.
+
 ## Główne widoki
 
 - Podsumowanie okresu

@@ -1,5 +1,7 @@
 # Kontrakt danych i metryk Hotel Marketing Analyzer
 
+> **HISTORICAL / SUPERSEDED** — dokument opisuje wcześniejszy etap projektu. Część odniesień do Supabase i `demo-data.ts` nie opisuje obecnego runtime. Aktualna architektura wykorzystuje BigQuery, modularny silnik diagnostyczny i Priority Engine; Supabase służy wyłącznie do uwierzytelniania.
+
 Wersja dokumentu: **0.2 — zaakceptowany kontrakt produkcyjnego rdzenia v1**. Data: 2026-09-05.
 
 Dokument opisuje docelowe zachowanie systemu na podstawie decyzji biznesowych etapu 2. Bieżąca praca obejmuje wyłącznie dokumentację; implementacja aplikacji, SQL i integracji będzie realizowana w kolejnych zadaniach. Odniesienia do obecnego kodu pochodzą z `prototype/lib/demo-data.ts`, `prototype/lib/marketing-metrics.ts`, `prototype/lib/campaign-data-sufficiency.ts` i `prototype/app/page.tsx`.
