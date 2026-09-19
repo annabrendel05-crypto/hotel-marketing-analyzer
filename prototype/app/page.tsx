@@ -63,6 +63,11 @@ type DiagnosticsResponse = {
 
 type RequestStatus = "loading" | "error" | "success";
 type RankedDiagnostic = NonNullable<PriorityEngineResult["top_business_issue"]>;
+const channelRoleReading: Partial<Record<RankedDiagnostic["code"], string>> = {
+  DEMAND_GENERATOR: "Budowanie popytu oznacza wcześniejszy kontakt z ofertą przed rezerwacją. Ta diagnoza dotyczy całej ścieżki hotelu, nie konkretnego kanału ani przypisanej mu sprzedaży.",
+  ASSISTER: "Rola wspierająca oznacza sygnały zainteresowania przed finalizacją. Niewielka liczba zakupów raportowanych przez platformę nie dowodzi braku jej udziału, ale też sama nie potwierdza wpływu na sprzedaż.",
+  CLOSER: "Rola domykająca oznacza widoczny koniec procesu rezerwacji. Ostatnie kliknięcie nie dowodzi, że dany kanał sam zbudował popyt.",
+};
 type AskDataUiMessage = AskDataConversationMessage & {
   keyFacts?: Array<{
     label: string;
@@ -617,6 +622,11 @@ function SummaryView({ diagnostics }: { diagnostics: DiagnosticsResponse }) {
   const visibleQualityItems = incompleteProfitroom
     ? [incompleteProfitroom, ...qualityItems.filter((item) => item !== incompleteProfitroom)].slice(0, 2)
     : qualityItems.slice(0, 2);
+  const channelReadingMessages = result.diagnostics
+    .filter((diagnostic) => diagnostic.family === "CHANNEL_ROLE" && diagnostic.scope === "HOTEL" && diagnostic.status === "ACTIVE")
+    .map((diagnostic) => channelRoleReading[diagnostic.code])
+    .filter((message): message is string => Boolean(message))
+    .slice(0, 2);
 
   return (
     <div className="summary-view">
@@ -773,6 +783,16 @@ function SummaryView({ diagnostics }: { diagnostics: DiagnosticsResponse }) {
           Wskaźniki kosztowe odnoszą wydatki reklamowe do potwierdzonej sprzedaży online z Profitroom. Nie są modelem atrybucji sprzedaży do reklam.
         </p>
       </section>
+
+      <aside className="summary-reading" aria-label="Jak czytać ten wynik?">
+        <h2>Jak czytać ten wynik?</h2>
+        <div>
+          {(channelReadingMessages.length > 0
+            ? channelReadingMessages
+            : ["Silnik nie potwierdził aktywnej roli kanałów w tym okresie. Nie oceniaj kanałów wyłącznie po ostatnim kliknięciu."]
+          ).map((message) => <p key={message}>{message}</p>)}
+        </div>
+      </aside>
 
       <section className="summary-section">
         <div className="summary-section-heading">
@@ -2293,6 +2313,9 @@ function ChannelRoleView({ diagnostics }: { diagnostics: DiagnosticsResponse }) 
                     <p>Pewność: {confidencePresentation(diagnostic.confidence)}</p>
                     <p>Status: {diagnosticStatusPresentation(diagnostic.status)}</p>
                     <EvidenceList evidence={diagnostic.evidence} />
+                    {channelRoleReading[diagnostic.code] && (
+                      <p className="channel-reading-note">{channelRoleReading[diagnostic.code]}</p>
+                    )}
                   </div>
                 </article>
               );
@@ -2334,6 +2357,9 @@ function ChannelRoleView({ diagnostics }: { diagnostics: DiagnosticsResponse }) 
 
         <p className="context-note">
           To dane raportowane przez Meta Ads, a nie potwierdzona sprzedaż hotelu.
+        </p>
+        <p className="channel-reading-note">
+          Meta może wspierać wcześniejszy kontakt z ofertą, zanim użytkownik przejdzie do rezerwacji. Niski ROAS platformowy nie dowodzi braku wpływu ani nie potwierdza go dla tego hotelu.
         </p>
       </section>
 
@@ -2387,6 +2413,9 @@ function ChannelRoleView({ diagnostics }: { diagnostics: DiagnosticsResponse }) 
         <p className="context-note">
           To dane raportowane przez Google Ads, a nie potwierdzona sprzedaż hotelu.
         </p>
+        <p className="channel-reading-note">
+          Google może przechwycić istniejącą intencję użytkownika. Konwersja raportowana przez platformę nie dowodzi, że Google samodzielnie wygenerował popyt lub potwierdzoną sprzedaż.
+        </p>
       </section>
 
       <section className="dashboard-section">
@@ -2411,6 +2440,10 @@ function ChannelRoleView({ diagnostics }: { diagnostics: DiagnosticsResponse }) 
         <p className="context-note">
           GA4 opisuje zachowanie użytkowników. Profitroom pozostaje źródłem potwierdzonej sprzedaży.
         </p>
+        <div className="channel-reading-pair">
+          <p className="channel-reading-note"><strong>Direct</strong> Booking Engine pokazuje finalizację sprzedaży bezpośredniej, ale nie całą wcześniejszą ścieżkę. Direct nie wskazuje, który kanał pierwotnie zbudował popyt.</p>
+          <p className="channel-reading-note"><strong>OTA</strong> Gość może poznać hotel dzięki reklamie, a zarezerwować przez OTA. Taka rezerwacja nie dowodzi ani nie wyklucza wpływu marketingu.</p>
+        </div>
       </section>
 
       <section className="dashboard-section" style={{ borderBottom: 0 }}>
