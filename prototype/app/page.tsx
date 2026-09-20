@@ -2888,6 +2888,9 @@ export default function Home() {
                   return;
                 }
 
+                if (report.id !== activeView) {
+                  window.scrollTo(0, 0);
+                }
                 setActiveView(report.id);
                 setIsAskDataOpen(false);
               }}
